@@ -1,0 +1,14 @@
+# Railway Deployment Configuration
+# This file configures automatic deployment of the backend on Railway
+
+[build]
+builder = "nixpacks"
+buildCommand = "cd backend && npm install && npm run build"
+
+[deploy]
+startCommand = "cd backend && npm start"
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 10
+
+[services.backend]
+source = "backend"
