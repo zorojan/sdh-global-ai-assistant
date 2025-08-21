@@ -29,17 +29,12 @@ app.use('/api/agents', agentsRoutes);
 // Public endpoint for API key (needed by frontend)
 app.get('/api/public/apikey', async (req, res) => {
   try {
-    const { promisify } = require('util');
-    
     const db = getDatabase();
-    const get = promisify(db.get.bind(db)) as any;
-
-    const setting = await get('SELECT value FROM settings WHERE key = ?', ['gemini_api_key']) as any;
-
+    // Prisma client: settings stored in `setting` model
+    const setting = await db.setting.findUnique({ where: { key: 'gemini_api_key' } });
     if (!setting || !setting.value) {
       return res.status(404).json({ error: 'API key not configured' });
     }
-
     res.json({ apiKey: setting.value });
   } catch (error) {
     console.error('Get API key error:', error);
@@ -50,14 +45,9 @@ app.get('/api/public/apikey', async (req, res) => {
 // Public endpoint for agents (needed by frontend)
 app.get('/api/public/agents', async (req, res) => {
   try {
-    const { promisify } = require('util');
-    
-    const db = getDatabase();
-    const all = promisify(db.all.bind(db)) as any;
-
-    const agents = await all('SELECT * FROM agents ORDER BY created_at DESC') as any[];
-
-    res.json(agents);
+  const db = getDatabase();
+  const agents = await db.agent.findMany({ orderBy: { createdAt: 'desc' } });
+  res.json(agents);
   } catch (error) {
     console.error('Get agents error:', error);
     res.status(500).json({ error: 'Failed to fetch agents' });

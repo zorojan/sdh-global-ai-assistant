@@ -12,6 +12,7 @@
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
     "build:admin": "cd admin-panel && npm run build",
+  "start:prod": "concurrently \"cd backend && npm run start\" \"cd admin-panel && npm run start\" \"cd frontend && npm run preview\"",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install && cd ../admin-panel && npm install",
     "clean": "rimraf frontend/node_modules backend/node_modules admin-panel/node_modules frontend/dist backend/dist admin-panel/.next admin-panel/build",
     "clean:all": "npm run clean && rimraf node_modules",

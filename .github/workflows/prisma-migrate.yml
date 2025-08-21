@@ -1,0 +1,32 @@
+name: Prisma Migrate (deploy/vercel)
+
+on:
+  push:
+    branches: [ "deploy/vercel" ]
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install deps
+        run: |
+          cd backend
+          npm ci
+      - name: Setup DATABASE_URL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "DATABASE_URL=${DATABASE_URL}" > backend/.env.ci
+      - name: Install Prisma CLI
+        run: |
+          cd backend
+          npx prisma migrate deploy --preview-feature
+      - name: Prisma Generate
+        run: |
+          cd backend
+          npx prisma generate

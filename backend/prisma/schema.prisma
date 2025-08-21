@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// By default this schema targets SQLite for local development.
+// To use Postgres in production (Vercel), set DATABASE_URL to a Postgres URL
+// and update the datasource provider to "postgresql" before running migrations.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Setting {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       String
+  description String?
+  type        String?  @default("string")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Agent {
+  id             String   @id
+  name           String
+  personality    String
+  body_color     String
+  voice          String
+  avatar_url     String?
+  knowledge_base String?
+  system_prompt  String?
+  is_active      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model AdminUser {
+  id            Int      @id @default(autoincrement())
+  username      String   @unique
+  password_hash String
+  email         String?
+  last_login    DateTime?
+  createdAt     DateTime @default(now())
+}

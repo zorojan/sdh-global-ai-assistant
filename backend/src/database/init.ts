@@ -1,105 +1,21 @@
-import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
 import bcrypt from 'bcryptjs';
-
-const DATABASE_PATH = process.env.DATABASE_PATH || './database.sqlite';
-
-let db: sqlite3.Database;
-
-export const getDatabase = (): sqlite3.Database => {
-  if (!db) {
-    throw new Error('Database not initialized');
-  }
-  return db;
-};
+import prisma from './prismaClient';
 
 export const initDatabase = async (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    db = new sqlite3.Database(DATABASE_PATH, async (err) => {
-      if (err) {
-        console.error('Error opening database:', err);
-        reject(err);
-        return;
-      }
-
-      console.log('📦 Connected to SQLite database');
-
-      try {
-        await createTables();
-        await insertDefaultData();
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
-    });
-  });
+  console.log('📦 Connected to database via Prisma');
+  await createDefaults();
 };
 
-const createTables = async (): Promise<void> => {
-  const run = promisify(db.run.bind(db)) as any;
-
-  // Settings table
-  await run(`
-    CREATE TABLE IF NOT EXISTS settings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key TEXT UNIQUE NOT NULL,
-      value TEXT NOT NULL,
-      description TEXT,
-      type TEXT DEFAULT 'string',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Agents table
-  await run(`
-    CREATE TABLE IF NOT EXISTS agents (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      personality TEXT NOT NULL,
-      body_color TEXT NOT NULL,
-      voice TEXT NOT NULL,
-      avatar_url TEXT,
-      knowledge_base TEXT,
-      system_prompt TEXT,
-      is_active BOOLEAN DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Admin users table
-  await run(`
-    CREATE TABLE IF NOT EXISTS admin_users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      email TEXT,
-      last_login DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  console.log('✅ Database tables created');
-};
-
-const insertDefaultData = async (): Promise<void> => {
-  const run = promisify(db.run.bind(db)) as any;
-  const get = promisify(db.get.bind(db)) as any;
-
-  // Check if admin user exists
-  const adminExists = await get('SELECT id FROM admin_users WHERE username = ?', ['admin']);
-  
-  if (!adminExists) {
+const createDefaults = async (): Promise<void> => {
+  // Admin user
+  const admin = await prisma.adminUser.findUnique({ where: { username: 'admin' } });
+  if (!admin) {
     const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 10);
-    await run(
-      'INSERT INTO admin_users (username, password_hash) VALUES (?, ?)',
-      ['admin', hashedPassword]
-    );
+    await prisma.adminUser.create({ data: { username: 'admin', password_hash: hashedPassword } });
     console.log('👤 Default admin user created');
   }
 
-  // Insert default settings
+  // Default settings
   const defaultSettings = [
     {
       key: 'gemini_api_key',
@@ -133,17 +49,14 @@ const insertDefaultData = async (): Promise<void> => {
     }
   ];
 
-  for (const setting of defaultSettings) {
-    const exists = await get('SELECT id FROM settings WHERE key = ?', [setting.key]);
+  for (const s of defaultSettings) {
+    const exists = await prisma.setting.findUnique({ where: { key: s.key } });
     if (!exists) {
-      await run(
-        'INSERT INTO settings (key, value, description, type) VALUES (?, ?, ?, ?)',
-        [setting.key, setting.value, setting.description, setting.type]
-      );
+      await prisma.setting.create({ data: s as any });
     }
   }
 
-  // Insert default agents
+  // Default agents
   const defaultAgents = [
     {
       id: 'startup-consultant',
@@ -184,17 +97,15 @@ const insertDefaultData = async (): Promise<void> => {
   ];
 
   for (const agent of defaultAgents) {
-    const exists = await get('SELECT id FROM agents WHERE id = ?', [agent.id]);
+    const exists = await prisma.agent.findUnique({ where: { id: agent.id } });
     if (!exists) {
-      await run(`
-        INSERT INTO agents (id, name, personality, body_color, voice, knowledge_base, system_prompt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [
-        agent.id, agent.name, agent.personality, agent.body_color, 
-        agent.voice, agent.knowledge_base, agent.system_prompt
-      ]);
+      await prisma.agent.create({ data: agent as any });
     }
   }
 
-  console.log('📚 Default data inserted');
+  console.log('📚 Default data inserted (Prisma)');
+};
+
+export const getDatabase = () => {
+  return prisma;
 };
