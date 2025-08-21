@@ -4,6 +4,8 @@ A powerful AI assistant platform with voice chat capabilities, built with React,
 
 ## 📚 Quick Navigation
 
+- **[⚡ БЫСТРОЕ РАЗВЕРТЫВАНИЕ](QUICK-DEPLOY.md)** - Запустите в облаке за 10 минут БЕСПЛАТНО!
+- **[🌐 Полное руководство по развертыванию](DEPLOYMENT-FREE.md)** - Детальные инструкции для всех платформ
 - **[🚀 Quick Reference](QUICK-REFERENCE.md)** - 30-second setup and key info
 - **[🏗️ Project Overview](PROJECT-OVERVIEW.md)** - Complete architecture guide  
 - **[🎨 Widget Architecture](WIDGET-ARCHITECTURE.md)** - Widget implementation details
@@ -21,12 +23,29 @@ A powerful AI assistant platform with voice chat capabilities, built with React,
 - 🎨 **Customizable Widget**: Embeddable chat widget for websites
 - ⚙️ **Admin Panel**: Easy configuration and management
 - 🔌 **WordPress Plugin**: Simple WordPress integration
+- **🌐 FREE CLOUD DEPLOYMENT**: Deploy to Railway, Vercel, Render, Netlify - all for FREE!
 
 **SDH Global**: A community of software engineers helping startups succeed. 
 
 For support, get in touch at [www.SDH.global](https://www.SDH.global).
 
-## 🚀 Quick Start
+---
+
+## 🚀 Два способа запуска
+
+### 🌐 1. В облаке (РЕКОМЕНДУЕТСЯ) - БЕСПЛАТНО!
+**Получите ваш AI Assistant в интернете за 10 минут:**
+
+[![Deploy Now](https://img.shields.io/badge/🚀_РАЗВЕРНУТЬ_СЕЙЧАС-success?style=for-the-badge)](QUICK-DEPLOY.md)
+
+**Почему в облаке лучше?**
+- ✅ Доступ с любого устройства 24/7
+- ✅ Автоматические обновления  
+- ✅ Профессиональные URL
+- ✅ Масштабируемость
+- ✅ БЕСПЛАТНО до 100GB трафика
+
+### 💻 2. Локально (для разработки)
 
 **Prerequisites:** Node.js installed
 
