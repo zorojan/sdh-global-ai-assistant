@@ -10,6 +10,7 @@
     "dev:admin": "cd admin-panel && npm run dev",
     "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
     "build:full": "npm run build:shared && npm run build:backend && npm run build:frontend && npm run build:admin",
+    "build:vercel": "cd frontend && npm run build",
     "build:shared": "echo 'No shared build needed'",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
