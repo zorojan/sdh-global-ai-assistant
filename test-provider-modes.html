@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Provider Modes - SDH AI Assistant</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .test-button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            margin: 10px; 
+            border-radius: 4px; 
+            cursor: pointer;
+        }
+        .test-button:hover { background: #0056b3; }
+        iframe { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🎤 Test Provider Modes</h1>
+    <p>Данная страница тестирует различные режимы провайдера AI:</p>
+    
+    <div class="test-section">
+        <h2>📋 Инструкция по тестированию</h2>
+        <ol>
+            <li>Откройте <a href="http://localhost:3000" target="_blank">админ-панель</a></li>
+            <li>Установите ai_provider в одно из значений: 'gemini', 'openai', или 'hybrid'</li>
+            <li>Нажмите кнопки ниже для тестирования каждого режима</li>
+            <li>Проверьте поведение виджета в режиме voice chat</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h2>🤖 Режим Gemini (автоматический выбор)</h2>
+        <p><strong>Ожидаемое поведение:</strong> При установке ai_provider = 'gemini' в админке, виджет автоматически использует только Gemini без показа выбора провайдера</p>
+        <button class="test-button" onclick="testGeminiMode()">Загрузить виджет с текущим ai_provider</button>
+        <div id="gemini-widget"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>⚡ Режим OpenAI (автоматический выбор)</h2>
+        <p><strong>Ожидаемое поведение:</strong> При установке ai_provider = 'openai' в админке, виджет автоматически использует только OpenAI без показа выбора провайдера</p>
+        <button class="test-button" onclick="testOpenAIMode()">Симулировать OpenAI режим</button>
+        <div id="openai-widget"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔄 Режим Hybrid (выбор пользователя)</h2>
+        <p><strong>Ожидаемое поведение:</strong> При установке ai_provider = 'hybrid' в админке, виджет показывает ProviderSelector, пользователь сам выбирает между Gemini/OpenAI</p>
+        <button class="test-button" onclick="testHybridMode()">Симулировать Hybrid режим</button>
+        <div id="hybrid-widget"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🧪 Debug информация</h2>
+        <p>Текущий ai_provider из widget.js:</p>
+        <button class="test-button" onclick="checkCurrentProvider()">Проверить текущий ai_provider</button>
+        <pre id="debug-info"></pre>
+    </div>
+
+    <script>
+        function createTestWidget(containerId, overrideProvider = null) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            // Создаем iframe напрямую с тестовыми параметрами
+            const iframe = document.createElement('iframe');
+            const params = new URLSearchParams({
+                agentId: 'test-agent',
+                theme: 'light',
+                position: 'bottom-right',
+                title: 'Test AI Assistant',
+                apiUrl: 'http://localhost:3001',
+                ai_provider: overrideProvider || 'current' // если null, используем текущий из БД
+            });
+            
+            iframe.src = `http://localhost:5173/widget.html?${params.toString()}`;
+            iframe.width = '400';
+            iframe.height = '600';
+            iframe.style.border = '1px solid #ddd';
+            iframe.style.borderRadius = '8px';
+            iframe.allow = 'microphone';
+            
+            container.appendChild(iframe);
+        }
+
+        function testGeminiMode() {
+            console.log('🤖 Testing Gemini mode (auto-select)');
+            createTestWidget('gemini-widget', 'gemini');
+        }
+
+        function testOpenAIMode() {
+            console.log('⚡ Testing OpenAI mode (auto-select)');
+            createTestWidget('openai-widget', 'openai');
+        }
+
+        function testHybridMode() {
+            console.log('🔄 Testing Hybrid mode (user choice)');
+            createTestWidget('hybrid-widget', 'hybrid');
+        }
+
+        async function checkCurrentProvider() {
+            try {
+                const response = await fetch('http://localhost:3001/widget.js');
+                const widgetScript = await response.text();
+                
+                // Извлечь ai_provider из скрипта
+                const match = widgetScript.match(/ai_provider:\s*'([^']+)'/);
+                const currentProvider = match ? match[1] : 'not found';
+                
+                document.getElementById('debug-info').textContent = 
+                    `Current ai_provider in DB: ${currentProvider}\n` +
+                    `Widget script timestamp: ${new Date().toLocaleString()}`;
+                
+                console.log('🔍 Current ai_provider:', currentProvider);
+            } catch (error) {
+                console.error('Error checking provider:', error);
+                document.getElementById('debug-info').textContent = 'Error: ' + error.message;
+            }
+        }
+
+        // Автоматически проверить текущий провайдер при загрузке
+        window.onload = () => {
+            checkCurrentProvider();
+        };
+    </script>
+</body>
+</html>

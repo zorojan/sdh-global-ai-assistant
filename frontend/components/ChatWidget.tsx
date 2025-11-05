@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { VoiceChatWidget } from './VoiceChatWidget';
+import { EnhancedVoiceChatWidget } from './EnhancedVoiceChat';
 import './ChatWidget.css';
 
 interface Message {
@@ -18,6 +18,7 @@ interface ChatWidgetProps {
   primaryColor?: string;
   apiUrl?: string;
   geminiApiKey?: string; // Опциональный параметр для фоллбэка
+  aiProvider?: string; // 'gemini' | 'openai' | 'hybrid'
 }
 
 type DialogMode = 'text' | 'voice' | null;
@@ -43,7 +44,8 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
   placeholder = 'Type your message...',
   primaryColor = '#007bff',
   apiUrl = 'http://localhost:3001',
-  geminiApiKey // Не используется, только для совместимости
+  geminiApiKey, // Не используется, только для совместимости
+  aiProvider = 'gemini'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
@@ -365,7 +367,13 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
                 <p>Loading voice configuration...</p>
               </div>
             ) : apiKey ? (
-              <VoiceChatWidget agent={agent} geminiApiKey={apiKey} />
+              <EnhancedVoiceChatWidget 
+                agent={agent} 
+                geminiApiKey={apiKey} 
+                apiUrl={apiUrl} 
+                initialProvider={(aiProvider === 'openai') ? 'openai' : 'gemini'} 
+                allowProviderSelection={aiProvider === 'hybrid'}
+              />
             ) : (
               <div className="voice-error">
                 <p>⚠️ Voice mode requires API key configuration</p>

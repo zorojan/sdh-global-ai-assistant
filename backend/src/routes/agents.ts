@@ -449,10 +449,94 @@ router.post('/:id/chat', async (req: any, res: express.Response) => {
   }
 });
 
+// Helper function for OpenAI chat
+async function callOpenAI(messages: any[], systemPrompt: string, apiKey: string) {
+  const openaiMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages.map((msg: any) => ({
+      role: msg.role === 'model' ? 'assistant' : msg.role,
+      content: typeof msg.content === 'string' ? msg.content : msg.parts?.[0]?.text || ''
+    }))
+  ];
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: openaiMessages,
+      temperature: 0.7,
+      max_tokens: 2048
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    console.error(`OpenAI API error: ${response.status} - ${errorData}`);
+    throw new Error(`OpenAI API error: ${response.status}`);
+  }
+
+  const data = await response.json() as any;
+  return data.choices[0].message.content;
+}
+
+// Helper function for Gemini chat
+async function callGemini(messages: any[], apiKey: string) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: messages,
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 2048,
+      },
+      safetySettings: [
+        {
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        }
+      ]
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    console.error(`Gemini API error: ${response.status} - ${errorData}`);
+    throw new Error(`Gemini API error: ${response.status}`);
+  }
+
+  const data = await response.json() as any;
+  if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+    throw new Error('Unexpected response format from Gemini');
+  }
+
+  return data.candidates[0].content.parts[0].text;
+}
+
 // General chat endpoint that accepts agentId in body
 router.post('/chat', async (req: any, res: express.Response) => {
   try {
-    const { message, agentId, history = [] } = req.body;
+    const { message, agentId, history = [], provider } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'Message is required' });

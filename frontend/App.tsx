@@ -27,6 +27,7 @@ import DataInitializer from './components/DataInitializer';
 import { ModeSelector, InteractionMode } from './components/ModeSelector';
 import { TextChat } from './components/TextChat';
 import { LiveAPIProvider } from './contexts/LiveAPIContext';
+import { EnhancedVoiceChatWidget } from './components/EnhancedVoiceChat';
 import { useUI, useAgent } from './lib/state';
 import { api } from './lib/api-client';
 import { useState, useEffect } from 'react';
@@ -47,6 +48,20 @@ async function fetchApiKey() {
   }
 }
 
+// Функция для получения настроек провайдера
+async function fetchProviderSettings() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/public/settings`);
+    if (!response.ok) throw new Error('Failed to fetch settings');
+    const data = await response.json();
+    const aiProvider = data.find((s: any) => s.key === 'ai_provider')?.value || 'gemini';
+    return { aiProvider };
+  } catch (error) {
+    console.error('Error fetching provider settings:', error);
+    return { aiProvider: 'gemini' };
+  }
+}
+
 /**
  * Main application component that provides a streaming interface for Live API.
  * Manages video streaming state and provides controls for webcam/screen capture.
@@ -58,6 +73,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('audio');
+  const [aiProvider, setAiProvider] = useState<string>('gemini');
 
   // Show user settings modal on first time
   useEffect(() => {
@@ -67,26 +83,33 @@ function App() {
   }, [isFirstTime, loading, error, setShowUserConfig]);
 
   useEffect(() => {
-    const loadApiKey = async () => {
+    const loadSettings = async () => {
       try {
         setLoading(true);
         setError(null);
-        const key = await fetchApiKey();
+        
+        // Load API key and provider settings
+        const [key, providerSettings] = await Promise.all([
+          fetchApiKey(),
+          fetchProviderSettings()
+        ]);
         
         if (!key) {
           setError('API ключ не настроен в админ панели');
         } else {
           setApiKey(key);
+          setAiProvider(providerSettings.aiProvider);
+          console.log('🚀 App: Loaded settings - Provider:', providerSettings.aiProvider);
         }
       } catch (err) {
-        console.error('Failed to load API key:', err);
+        console.error('Failed to load settings:', err);
         setError('Не удалось загрузить настройки');
       } finally {
         setLoading(false);
       }
     };
 
-    loadApiKey();
+    loadSettings();
   }, []);
 
   // Load agents from database when API key is available
@@ -179,7 +202,17 @@ function App() {
             <main>
               <div className="main-app-area">
                 {interactionMode === 'audio' ? (
-                  <KeynoteCompanion />
+                  aiProvider === 'gemini' ? (
+                    <KeynoteCompanion />
+                  ) : (
+                    <EnhancedVoiceChatWidget 
+                      agent={current}
+                      geminiApiKey={apiKey}
+                      apiUrl={API_BASE_URL}
+                      initialProvider={aiProvider === 'openai' ? 'openai' : 'gemini'}
+                      allowProviderSelection={aiProvider === 'hybrid'}
+                    />
+                  )
                 ) : (
                   <TextChat
                     agentId={current.id}

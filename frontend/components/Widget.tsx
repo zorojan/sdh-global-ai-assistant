@@ -10,7 +10,8 @@ const Widget: React.FC = () => {
     placeholder: 'Type your message...',
     primaryColor: '#007bff',
     apiUrl: 'http://localhost:3001',
-    geminiApiKey: 'demo-key'
+    geminiApiKey: 'demo-key',
+    aiProvider: 'gemini'
   });
 
   useEffect(() => {
@@ -26,6 +27,8 @@ const Widget: React.FC = () => {
       primaryColor: urlParams.get('primaryColor') || '#007bff',
       apiUrl: urlParams.get('apiUrl') || 'http://localhost:3001',
       geminiApiKey: urlParams.get('geminiApiKey') || 'demo-key'
+      ,
+      aiProvider: (urlParams.get('ai_provider') as 'gemini' | 'openai' | 'hybrid') || 'gemini'
     };
 
     setConfig(newConfig);
@@ -93,6 +96,7 @@ const Widget: React.FC = () => {
         primaryColor={config.primaryColor}
         apiUrl={config.apiUrl}
         geminiApiKey={config.geminiApiKey}
+          aiProvider={config.aiProvider}
       />
     </div>
   );

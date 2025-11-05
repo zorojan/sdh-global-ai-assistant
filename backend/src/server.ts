@@ -6,6 +6,7 @@ import { initDatabase, getDatabase } from './database/init';
 import settingsRoutes from './routes/settings';
 import agentsRoutes from './routes/agents';
 import authRoutes from './routes/auth';
+import realtimeRoutes from './routes/realtime';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/realtime', realtimeRoutes);
 
 // Public endpoint for API key (needed by frontend)
 app.get('/api/public/apikey', async (req, res) => {
@@ -64,14 +66,51 @@ app.get('/api/public/agents', async (req, res) => {
   }
 });
 
+// Public endpoint for basic settings (needed by frontend)
+app.get('/api/public/settings', async (req, res) => {
+  try {
+    const { promisify } = require('util');
+    
+    const db = getDatabase();
+    const all = promisify(db.all.bind(db)) as any;
+
+    // Only return non-sensitive settings
+    const publicSettings = await all(`
+      SELECT key, value 
+      FROM settings 
+      WHERE key IN ('ai_provider', 'enable_audio', 'max_conversation_length')
+    `) as any[];
+
+    res.json(publicSettings);
+  } catch (error) {
+    console.error('Get public settings error:', error);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
 // Serve widget.js dynamically
-app.get('/widget.js', (req, res) => {
-  const widgetScript = `
+app.get('/widget.js', async (req, res) => {
+  try {
+    // Read ai_provider from DB so widget iframe can receive it as a param
+    const { promisify } = require('util');
+    const db = getDatabase();
+    const get = promisify(db.get.bind(db)) as any;
+
+    let aiProviderValue = 'gemini';
+    try {
+      const row = await get('SELECT value FROM settings WHERE key = ?', ['ai_provider']);
+      if (row && row.value) aiProviderValue = row.value;
+    } catch (err) {
+      // ignore and fallback to gemini
+      console.warn('Could not read ai_provider from DB, defaulting to gemini', err);
+    }
+
+    const widgetScript = `
 (function() {
   // Default configuration
   var defaultConfig = {
@@ -82,7 +121,8 @@ app.get('/widget.js', (req, res) => {
     placeholder: 'Type your message...',
     primaryColor: '#007bff',
     apiUrl: '${process.env.API_URL || 'http://localhost:3001'}',
-    widgetUrl: '${process.env.WIDGET_URL || 'http://localhost:5173'}'
+    widgetUrl: '${process.env.WIDGET_URL || 'http://localhost:5173'}',
+    ai_provider: '${aiProviderValue}'
   };
 
   // Merge with any global SDH config
@@ -115,9 +155,13 @@ app.get('/widget.js', (req, res) => {
 })();
 `;
 
-  res.setHeader('Content-Type', 'application/javascript');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.send(widgetScript);
+    res.setHeader('Content-Type', 'application/javascript');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(widgetScript);
+  } catch (err) {
+    console.error('Error generating widget.js:', err);
+    res.status(500).send('// Failed to generate widget script');
+  }
 });
 
 // Error handling middleware
