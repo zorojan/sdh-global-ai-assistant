@@ -20,6 +20,9 @@ export interface Agent {
   avatar_url?: string
   knowledge_base?: string
   system_prompt?: string
+  language?: string
+  voice_language?: string
+  voice_characteristics?: string
   is_active: boolean
   created_at: string
   updated_at: string

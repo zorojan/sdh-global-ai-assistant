@@ -9,7 +9,10 @@ export function convertApiAgentToLocal(apiAgent: ApiAgent): LocalAgent {
     personality: apiAgent.personality,
     bodyColor: apiAgent.body_color,
     voice: apiAgent.voice as INTERLOCUTOR_VOICE,
-    avatarUrl: apiAgent.avatar_url || ''
+    avatarUrl: apiAgent.avatar_url || '',
+    language: apiAgent.language || 'en-US',
+    voiceLanguage: apiAgent.voice_language || 'en-US',
+    voiceCharacteristics: apiAgent.voice_characteristics || ''
   }
 }
 
@@ -22,6 +25,9 @@ export function convertLocalAgentToApi(localAgent: LocalAgent): Partial<ApiAgent
     body_color: localAgent.bodyColor,
     voice: localAgent.voice,
     avatar_url: localAgent.avatarUrl,
+    language: localAgent.language,
+    voice_language: localAgent.voiceLanguage,
+    voice_characteristics: localAgent.voiceCharacteristics,
     is_active: true
   }
 }

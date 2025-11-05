@@ -127,7 +127,8 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
     knowledge_base: '',
     system_prompt: '',
     language: 'en-US',
-    voice_language: 'en-US'
+    voice_language: 'en-US',
+    voice_characteristics: ''
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -272,6 +273,19 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
           />
         </div>
 
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Голосовые характеристики
+          </label>
+          <textarea
+            rows={4}
+            value={formData.voice_characteristics}
+            onChange={(e) => setFormData(prev => ({ ...prev, voice_characteristics: e.target.value }))}
+            className="form-input"
+            placeholder="Voice: Описание голоса и тона...&#10;Punctuation: Особенности пунктуации...&#10;Delivery: Стиль подачи...&#10;Phrasing: Манера изложения...&#10;Tone: Общий тон общения..."
+          />
+        </div>
+
         <div className="flex justify-end space-x-2 pt-4">
           <button
             type="button"
@@ -304,6 +318,7 @@ function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
     system_prompt: agent?.system_prompt || '',
     language: agent?.language || 'en-US',
     voice_language: agent?.voice_language || 'en-US',
+    voice_characteristics: agent?.voice_characteristics || '',
     is_active: agent?.is_active ?? true
   })
 
@@ -431,6 +446,19 @@ function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
             onChange={(e) => setFormData(prev => ({ ...prev, system_prompt: e.target.value }))}
             className="form-input"
             placeholder="Дополнительные инструкции для агента..."
+          />
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Голосовые характеристики
+          </label>
+          <textarea
+            rows={4}
+            value={formData.voice_characteristics}
+            onChange={(e) => setFormData(prev => ({ ...prev, voice_characteristics: e.target.value }))}
+            className="form-input"
+            placeholder="Voice: Описание голоса и тона...&#10;Punctuation: Особенности пунктуации...&#10;Delivery: Стиль подачи...&#10;Phrasing: Манера изложения...&#10;Tone: Общий тон общения..."
           />
         </div>
         

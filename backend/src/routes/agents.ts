@@ -6,29 +6,123 @@ import axios from 'axios';
 
 const router = express.Router();
 
-// Armenian language system instructions
+// Function to get company information from settings
+const getCompanyInfo = async (db: any, all: any) => {
+  const settings = await all('SELECT * FROM settings WHERE key IN (?, ?, ?, ?)', [
+    'company_name', 'company_description', 'company_website', 'company_documents'
+  ]) as any[];
+  
+  const companyInfo: any = {};
+  settings.forEach((setting: any) => {
+    companyInfo[setting.key] = setting.value;
+  });
+  
+  return {
+    company_name: companyInfo.company_name || 'SDH Global',
+    company_description: companyInfo.company_description || '',
+    company_website: companyInfo.company_website || '',
+    company_documents: companyInfo.company_documents || ''
+  };
+};
+
+// Generate system prompt with language-specific instructions and voice characteristics
+const generateSystemPromptWithLanguage = (basePrompt: string, agent: any, companyInfo?: any): string => {
+  const language = agent.language || agent.voice_language;
+  let languageInstructions = '';
+  
+  switch (language) {
+    case 'hy-AM':
+      languageInstructions = `
+
+CRITICAL - ARMENIAN LANGUAGE INSTRUCTIONS:
+- You MUST respond ONLY in Eastern Armenian (hy-AM) language
+- NEVER use English words, phrases, or mixed language responses
+- Use proper Armenian grammar, vocabulary, and pronunciation
+- Respond naturally as a native Armenian speaker would
+- Example greetings: Use "բարև" or "բարև ձեզ" instead of "hello"
+- Use Armenian punctuation: ։ (verjaket) and ՝ (but) 
+- Read numbers in Armenian: "մեկ", "երկու", "երեք", etc.
+
+ԿԱՐԵՎՈՐ - ՀԱՅԵՐԵՆ ԼԵԶՎԱԿԱՆ ՀՐԱՀԱՆԳՆԵՐ:
+- Դուք ՊԵՏՔ Է պատասխանեք ՄԻԱՅՆ արևելահայերենով
+- ԵՐԲԵՔ մի օգտագործեք անգլերեն բառեր, արտահայտություններ կամ խառը լեզվական պատասխաններ
+- Օգտագործեք ճիշտ հայերեն քերականություն, բառապաշար և արտասանություն
+- Պատասխանեք բնականորեն, ինչպես մայրենի հայ խոսողը կպատասխաներ
+- Օրինակ ողջույններ: Օգտագործեք "բարև" կամ "բարև ձեզ" "hello"-ի փոխարեն
+- Օգտագործեք հայերեն կետադրական նշաններ: ։ (վերջակետ) և ՝ (բութ)
+
+THIS IS MANDATORY - NO ENGLISH ALLOWED IN ARMENIAN RESPONSES!`;
+      break;
+
+    case 'ru-RU':
+      languageInstructions = `
+
+КРИТИЧНО - РУССКИЕ ЯЗЫКОВЫЕ ИНСТРУКЦИИ:
+- Вы ДОЛЖНЫ говорить ТОЛЬКО на русском языке
+- НИКОГДА не используйте английские слова в ответах
+- Используйте правильную русскую грамматику и произношение
+- Отвечайте естественно как носитель русского языка
+- Это ОБЯЗАТЕЛЬНО - НИ ОДНОГО АНГЛИЙСКОГО СЛОВА в русских ответах!`;
+      break;
+
+    case 'en-US':
+    default:
+      languageInstructions = `
+
+LANGUAGE INSTRUCTIONS:
+- Speak clearly in English
+- Use natural English grammar and pronunciation`;
+      break;
+  }
+
+  // Add voice characteristics if available
+  let voiceInstructions = '';
+  if (agent.voice_characteristics) {
+    voiceInstructions = `
+
+VOICE CHARACTERISTICS & DELIVERY STYLE:
+${agent.voice_characteristics}
+
+Please follow these voice characteristics closely to maintain consistent personality and delivery style.`;
+  }
+
+  // Add company information if available
+  let companyInstructions = '';
+  if (companyInfo) {
+    const companyName = companyInfo.company_name || 'SDH Global';
+    companyInstructions = `
+
+COMPANY INFORMATION:
+You represent ${companyName}.`;
+    
+    if (companyInfo.company_description) {
+      companyInstructions += `
+
+About ${companyName}:
+${companyInfo.company_description}`;
+    }
+    
+    if (companyInfo.company_website) {
+      companyInstructions += `
+Company website: ${companyInfo.company_website}`;
+    }
+    
+    if (companyInfo.company_documents) {
+      companyInstructions += `
+
+Corporate Guidelines and Policies:
+${companyInfo.company_documents}
+
+Please follow these corporate guidelines when assisting users and ensure your responses align with company values and policies.`;
+    }
+  }
+
+  return basePrompt + languageInstructions + voiceInstructions + companyInstructions;
+};
+
+// Legacy function for backward compatibility
 const generateArmenianSystemPrompt = (basePrompt: string): string => {
-  const armenianInstructions = `
-
-ВАЖНО - ЯЗЫКОВЫЕ ИНСТРУКЦИИ:
-- Говори только на восточно-армянском языке (hy-AM)
-- Избегай переключения на английский язык в середине предложения (code-switching)  
-- Читай числа армянскими словами (например: "մեկ", "երկու", "երեք")
-- Делай паузы на армянских знаках препинания: \u0589 (верджакет) и \u055D (бют)
-- Используй правильную армянскую пунктуацию и грамматику
-- Отвечай естественно на армянском, как носитель языка
-
-LANGUAGE INSTRUCTIONS (Eastern Armenian):
-- Speak exclusively in Eastern Armenian (hy-AM)
-- Avoid English code-switching within sentences
-- Read numbers in Armenian words (e.g., "մեկ", "երկու", "երեք")
-- Pause at Armenian punctuation marks: \u0589 (full stop) and \u055D (comma)
-- Use proper Armenian grammar and punctuation
-- Respond naturally as a native Armenian speaker
-
-`;
-
-  return basePrompt + armenianInstructions;
+  return generateSystemPromptWithLanguage(basePrompt, { language: 'hy-AM' });
 };
 
 // Get all agents
@@ -79,7 +173,8 @@ router.post('/', authenticateToken, async (req: any, res: express.Response) => {
       knowledge_base,
       system_prompt,
       language,
-      voice_language
+      voice_language,
+      voice_characteristics
     } = req.body;
 
     if (!id || !name || !personality || !body_color || !voice) {
@@ -101,12 +196,12 @@ router.post('/', authenticateToken, async (req: any, res: express.Response) => {
     // Create agent
     await run(`
       INSERT INTO agents 
-      (id, name, personality, body_color, voice, avatar_url, knowledge_base, system_prompt, language, voice_language)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, personality, body_color, voice, avatar_url, knowledge_base, system_prompt, language, voice_language, voice_characteristics)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id, name, personality, body_color, voice, 
       avatar_url || null, knowledge_base || null, system_prompt || null,
-      language || 'en-US', voice_language || 'en-US'
+      language || 'en-US', voice_language || 'en-US', voice_characteristics || null
     ]);
 
     res.status(201).json({ success: true, message: 'Agent created successfully' });
@@ -130,6 +225,7 @@ router.put('/:id', authenticateToken, async (req: any, res: express.Response) =>
       system_prompt,
       language,
       voice_language,
+      voice_characteristics,
       is_active
     } = req.body;
 
@@ -182,6 +278,14 @@ router.put('/:id', authenticateToken, async (req: any, res: express.Response) =>
     if (voice_language !== undefined) {
       updates.push('voice_language = ?');
       values.push(voice_language);
+    }
+    if (voice_characteristics !== undefined) {
+      updates.push('voice_characteristics = ?');
+      values.push(voice_characteristics);
+    }
+    if (voice_characteristics !== undefined) {
+      updates.push('voice_characteristics = ?');
+      values.push(voice_characteristics);
     }
     if (is_active !== undefined) {
       updates.push('is_active = ?');
@@ -236,12 +340,16 @@ router.post('/:id/message', async (req: any, res: express.Response) => {
 
     const db = getDatabase();
     const get = promisify(db.get.bind(db)) as any;
+    const all = promisify(db.all.bind(db)) as any;
 
     // Get agent details
     const agent = await get('SELECT * FROM agents WHERE id = ? AND is_active = 1', [id]) as any;
     if (!agent) {
       return res.status(404).json({ error: 'Agent not found' });
     }
+
+    // Get company information
+    const companyInfo = await getCompanyInfo(db, all);
 
     // Get API key and message dialog model
     const apiKeySetting = await get('SELECT value FROM settings WHERE key = ?', ['gemini_api_key']) as any;
@@ -254,9 +362,9 @@ router.post('/:id/message', async (req: any, res: express.Response) => {
     const apiKey = apiKeySetting.value;
     const model = modelSetting?.value || 'gemini-1.5-flash';
 
-    // Create system prompt with Armenian language instructions
+    // Create system prompt with language-specific instructions
     const baseSystemPrompt = agent.system_prompt || `You are ${agent.name}. ${agent.personality}`;
-    const systemPrompt = generateArmenianSystemPrompt(baseSystemPrompt);
+    const systemPrompt = generateSystemPromptWithLanguage(baseSystemPrompt, agent, companyInfo);
 
     // Call Gemini API
     const geminiResponse = await axios.post(
@@ -353,6 +461,9 @@ router.post('/:id/chat', async (req: any, res: express.Response) => {
       }
     }
 
+    // Get company information
+    const companyInfo = await getCompanyInfo(db, all);
+
     // Get API key and message dialog model
     const apiKeySetting = await get('SELECT value FROM settings WHERE key = ?', ['gemini_api_key']) as any;
     const modelSetting = await get('SELECT value FROM settings WHERE key = ?', ['message_dialog_model']) as any;
@@ -364,9 +475,9 @@ router.post('/:id/chat', async (req: any, res: express.Response) => {
     const apiKey = apiKeySetting.value;
     const model = modelSetting?.value || 'gemini-1.5-flash';
 
-    // Create system prompt with Armenian language instructions
+    // Create system prompt with language-specific instructions
     const baseSystemPrompt = agent.system_prompt || `You are ${agent.name}. ${agent.personality}`;
-    const systemPrompt = generateArmenianSystemPrompt(baseSystemPrompt);
+    const systemPrompt = generateSystemPromptWithLanguage(baseSystemPrompt, agent, companyInfo);
 
     // Build conversation contents from history with proper roles
     const contents = [
@@ -586,6 +697,10 @@ router.post('/chat', async (req: any, res: express.Response) => {
 
     console.log(`Processing chat for agent: ${agent.id} (${agent.name})`);
 
+    // Get company information and all settings
+    const settings = await all('SELECT * FROM settings') as any[];
+    const companyInfo = await getCompanyInfo(db, all);
+
     // Build system prompt with Armenian language instructions
     let baseSystemPrompt = agent.personality || 'You are a helpful AI assistant.';
     if (agent.knowledge_base) {
@@ -595,11 +710,8 @@ router.post('/chat', async (req: any, res: express.Response) => {
       baseSystemPrompt += `\n\nAdditional Instructions: ${agent.system_prompt}`;
     }
     
-    // Apply Armenian language instructions
-    const systemPrompt = generateArmenianSystemPrompt(baseSystemPrompt);
-
-    // Get settings
-    const settings = await all('SELECT * FROM settings') as any[];
+    // Apply language-specific instructions
+    const systemPrompt = generateSystemPromptWithLanguage(baseSystemPrompt, agent, companyInfo);
     const aiProviderSetting = settings.find((s: any) => s.key === 'ai_provider');
     const activeProvider = provider || aiProviderSetting?.value || 'gemini';
 

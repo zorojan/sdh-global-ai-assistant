@@ -9,6 +9,7 @@ export interface Agent {
   system_prompt?: string;
   language?: string;
   voice_language?: string;
+  voice_characteristics?: string;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;

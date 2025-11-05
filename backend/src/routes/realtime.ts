@@ -9,6 +9,9 @@ const router = express.Router();
 router.post('/session', express.raw({ type: 'application/sdp', limit: '10mb' }), async (req: any, res: express.Response) => {
   try {
     console.log('🎤 OpenAI Realtime API session request received');
+    
+    const agentId = req.query.agentId;
+    console.log('🎤 Agent ID:', agentId);
 
     // Get OpenAI API key from database
     const db = getDatabase();
@@ -22,12 +25,24 @@ router.post('/session', express.raw({ type: 'application/sdp', limit: '10mb' }),
 
     const apiKey = apiKeySetting.value;
 
-    // Get voice and language settings
-    const openaiVoiceSetting = await get('SELECT value FROM settings WHERE key = ?', ['openai_voice']) as any;
-    const realtimeLanguageSetting = await get('SELECT value FROM settings WHERE key = ?', ['realtime_language']) as any;
-
-    const selectedVoice = openaiVoiceSetting?.value || 'alloy';
-    const selectedLanguage = realtimeLanguageSetting?.value || 'en-US';
+    // Get agent-specific voice and language settings
+    let selectedVoice = 'alloy';
+    let selectedLanguage = 'en-US';
+    
+    if (agentId) {
+      const agent = await get('SELECT voice, language, voice_language FROM agents WHERE id = ?', [agentId]) as any;
+      if (agent) {
+        selectedVoice = agent.voice || 'alloy';
+        selectedLanguage = agent.voice_language || agent.language || 'en-US';
+        console.log('🎤 Using agent settings - Voice:', selectedVoice, 'Language:', selectedLanguage);
+      }
+    } else {
+      // Fallback to global settings if no agent specified
+      const openaiVoiceSetting = await get('SELECT value FROM settings WHERE key = ?', ['openai_voice']) as any;
+      const realtimeLanguageSetting = await get('SELECT value FROM settings WHERE key = ?', ['realtime_language']) as any;
+      selectedVoice = openaiVoiceSetting?.value || 'alloy';
+      selectedLanguage = realtimeLanguageSetting?.value || 'en-US';
+    }
 
     // Get SDP offer from browser (raw body buffer)
     let offerSdp: string;

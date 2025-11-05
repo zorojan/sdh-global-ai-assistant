@@ -101,6 +101,7 @@ const runMigrations = async (): Promise<void> => {
 
     const hasLanguage = tableInfo.some((col: any) => col.name === 'language');
     const hasVoiceLanguage = tableInfo.some((col: any) => col.name === 'voice_language');
+    const hasVoiceCharacteristics = tableInfo.some((col: any) => col.name === 'voice_characteristics');
 
     if (!hasLanguage) {
       await run('ALTER TABLE agents ADD COLUMN language TEXT DEFAULT "hy-AM"');
@@ -110,6 +111,11 @@ const runMigrations = async (): Promise<void> => {
     if (!hasVoiceLanguage) {
       await run('ALTER TABLE agents ADD COLUMN voice_language TEXT DEFAULT "hy-AM"');
       console.log('✅ Added voice_language column to agents table');
+    }
+
+    if (!hasVoiceCharacteristics) {
+      await run('ALTER TABLE agents ADD COLUMN voice_characteristics TEXT');
+      console.log('✅ Added voice_characteristics column to agents table');
     }
   } catch (error) {
     console.error('Migration error:', error);
@@ -187,6 +193,31 @@ const insertDefaultData = async (): Promise<void> => {
       value: 'en-US',
       description: 'OpenAI Realtime Language (en-US, en-GB, es-ES, fr-FR, de-DE, hy-AM)',
       type: 'select'
+    },
+    // Company Information Settings
+    {
+      key: 'company_name',
+      value: 'SDH Global',
+      description: 'Company Name',
+      type: 'string'
+    },
+    {
+      key: 'company_description',
+      value: 'A community of software engineers helping startups succeed',
+      description: 'Company Description',
+      type: 'string'
+    },
+    {
+      key: 'company_website',
+      value: 'https://sdh.global',
+      description: 'Company Website',
+      type: 'string'
+    },
+    {
+      key: 'company_documents',
+      value: '',
+      description: 'Company Documents (internal information, processes, etc.)',
+      type: 'text'
     }
   ];
 
@@ -210,6 +241,7 @@ const insertDefaultData = async (): Promise<void> => {
       voice: 'Orus',
       language: 'hy-AM', // Armenian for this agent
       voice_language: 'hy-AM',
+      voice_characteristics: 'Voice: Warm, confident, and inspiring, projecting wisdom and encouragement.\n\nPunctuation: Thoughtful pauses between key points to emphasize important business concepts.\n\nDelivery: Measured pace with rising intonation when presenting opportunities and solutions.\n\nPhrasing: Strategic and insightful, using motivational language to inspire entrepreneurial action.\n\nTone: Professional yet approachable, creating trust and confidence in business guidance.',
       knowledge_base: 'Startup methodology, business planning, fundraising strategies, market analysis',
       system_prompt: 'You are a startup consultant with deep expertise in business strategy and entrepreneurship.'
     },
@@ -221,6 +253,7 @@ const insertDefaultData = async (): Promise<void> => {
       voice: 'Aoede',
       language: 'en-US', // English for this agent
       voice_language: 'en-US',
+      voice_characteristics: 'Voice: High-energy, upbeat, and encouraging, projecting enthusiasm and innovation.\n\nPunctuation: Short, punchy sentences with strategic pauses to maintain excitement and clarity.\n\nDelivery: Fast-paced and dynamic, with rising intonation to build momentum and keep engagement high.\n\nPhrasing: Action-oriented and direct, using motivational cues to push AI adoption forward.\n\nTone: Positive, energetic, and empowering, creating an atmosphere of technological achievement.',
       knowledge_base: 'Machine learning, AI integration, model selection, AI product development',
       system_prompt: 'You are an AI specialist focused on practical AI implementation for businesses.'
     },
@@ -232,6 +265,7 @@ const insertDefaultData = async (): Promise<void> => {
       voice: 'Charon',
       language: 'ru-RU', // Russian for this agent
       voice_language: 'ru-RU',
+      voice_characteristics: 'Voice: Authoritative, calm, and analytical, projecting deep technical expertise.\n\nPunctuation: Deliberate pauses after complex technical concepts for comprehension.\n\nDelivery: Steady, methodical pace with emphasis on critical architectural decisions.\n\nPhrasing: Precise and structured, using technical terminology with clear explanations.\n\nTone: Serious, professional, and knowledgeable, inspiring confidence in technical solutions.',
       knowledge_base: 'System architecture, scalability, technology stacks, software design patterns',
       system_prompt: 'You are a senior technical architect with expertise in scalable system design.'
     },
@@ -243,6 +277,7 @@ const insertDefaultData = async (): Promise<void> => {
       voice: 'Puck',
       language: 'en-US', // English for this agent
       voice_language: 'en-US',
+      voice_characteristics: 'Voice: Practical, reliable, and solution-focused, projecting operational excellence.\n\nPunctuation: Clear breaks between operational procedures and best practices.\n\nDelivery: Steady, confident pace with emphasis on reliability and efficiency.\n\nPhrasing: Direct and pragmatic, using actionable language for infrastructure solutions.\n\nTone: Professional, dependable, and systematic, creating confidence in operational stability.',
       knowledge_base: 'DevOps practices, CI/CD, cloud infrastructure, containerization, monitoring',
       system_prompt: 'You are a DevOps expert focused on reliable and scalable infrastructure.'
     }
@@ -252,12 +287,12 @@ const insertDefaultData = async (): Promise<void> => {
     const exists = await get('SELECT id FROM agents WHERE id = ?', [agent.id]);
     if (!exists) {
       await run(`
-        INSERT INTO agents (id, name, personality, body_color, voice, knowledge_base, system_prompt, language, voice_language)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO agents (id, name, personality, body_color, voice, knowledge_base, system_prompt, language, voice_language, voice_characteristics)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         agent.id, agent.name, agent.personality, agent.body_color, 
         agent.voice, agent.knowledge_base, agent.system_prompt,
-        agent.language, agent.voice_language
+        agent.language, agent.voice_language, agent.voice_characteristics
       ]);
     }
   }

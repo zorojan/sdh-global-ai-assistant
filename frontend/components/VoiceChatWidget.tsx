@@ -5,6 +5,40 @@ import { LiveAPIProviderWidget } from '../contexts/LiveAPIContextWidget';
 import { useLiveAPIContextWidget } from '../contexts/LiveAPIContextWidget';
 import BasicFaceWidget from './demo/basic-face/BasicFaceWidget';
 
+// Language instructions for different locales
+function getLanguageInstructions(language?: string): string {
+  switch (language) {
+    case 'hy-AM':
+      return `
+CRITICAL - ARMENIAN LANGUAGE INSTRUCTIONS:
+- You MUST speak ONLY in Eastern Armenian (hy-AM) language
+- NEVER use English words or phrases in your responses
+- Use proper Armenian grammar and pronunciation
+- Respond naturally as a native Armenian speaker
+- Example: Instead of "hello" say "բարև" or "բարև ձեզ"
+- Use Armenian punctuation: ։ (verjaket) and ՝ (but)
+
+ԿԱՐԵՎՈՐ - ՀԱՅԵՐԵՆ ԼԵԶՎԱԿԱՆ ՀՐԱՀԱՆԳՆԵՐ:
+- Դուք ՊԵՏՔ Է խոսեք ՄԻԱՅՆ արևելահայերենով
+- ԵՐԲԵՔ մի օգտագործեք անգլերեն բառեր կամ արտահայտություններ
+- Օգտագործեք ճիշտ հայերեն քերականություն և արտասանություն
+- Պատասխանեք բնականորեն որպես մայրենի հայ խոսող`;
+    case 'ru-RU':
+      return `
+КРИТИЧНО - РУССКИЕ ЯЗЫКОВЫЕ ИНСТРУКЦИИ:
+- Вы ДОЛЖНЫ говорить ТОЛЬКО на русском языке
+- НИКОГДА не используйте английские слова в ответах
+- Используйте правильную русскую грамматику и произношение
+- Отвечайте естественно как носитель русского языка`;
+    case 'en-US':
+    default:
+      return `
+LANGUAGE INSTRUCTIONS:
+- Speak clearly in English
+- Use natural English grammar and pronunciation`;
+  }
+}
+
 interface VoiceChatWidgetProps {
   agent: any;
   geminiApiKey: string;
@@ -40,10 +74,11 @@ const VoiceChatWidgetInner: React.FC<{ agent: any }> = ({ agent }) => {
             prebuiltVoiceConfig: { voiceName: agent.voice || 'Orus' },
           },
         },
+
         systemInstruction: {
           parts: [
             {
-              text: `${agent.personality || 'You are a helpful AI assistant.'}\n\nPLEASE KEEP RESPONSES VERY SHORT AND CONVERSATIONAL. This is a voice chat, so speak naturally and briefly like in a real conversation.`
+              text: `${agent.personality || 'You are a helpful AI assistant.'}\n\nPLEASE KEEP RESPONSES VERY SHORT AND CONVERSATIONAL. This is a voice chat, so speak naturally and briefly like in a real conversation.\n\n${getLanguageInstructions(agent.language || agent.voiceLanguage)}`
             }
           ]
         }

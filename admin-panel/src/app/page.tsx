@@ -6,8 +6,9 @@ import LoginForm from '../components/LoginForm';
 import AgentsTab from '../components/AgentsTab';
 import SettingsTab from '../components/SettingsTab';
 import WidgetTab from '../components/WidgetTab';
+import CompanyTab from '../components/CompanyTab';
 
-type TabType = 'agents' | 'settings' | 'widget';
+type TabType = 'agents' | 'settings' | 'company' | 'widget';
 
 export default function AdminPanel() {
   const { isAuthenticated, loading, user, logout } = useAuth();
@@ -39,6 +40,12 @@ export default function AdminPanel() {
       name: '⚙️ Настройки', 
       description: 'Конфигурация системы',
       icon: '⚙️'
+    },
+    { 
+      id: 'company' as TabType, 
+      name: '🏢 О компании', 
+      description: 'Информация о компании и документы',
+      icon: '🏢'
     },
     { 
       id: 'widget' as TabType, 
@@ -198,6 +205,17 @@ export default function AdminPanel() {
                   <p className="text-gray-600">Конфигурация API ключей и системных параметров</p>
                 </div>
                 <SettingsTab />
+              </div>
+            )}
+
+            {/* Вкладка О компании */}
+            {activeTab === 'company' && (
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">🏢 О компании</h2>
+                  <p className="text-gray-600">Информация о компании и корпоративные документы</p>
+                </div>
+                <CompanyTab />
               </div>
             )}
 

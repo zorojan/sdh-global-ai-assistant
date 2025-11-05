@@ -18,21 +18,27 @@ export default function KeynoteCompanion() {
 
   // Set the configuration for the Live API
   useEffect(() => {
-    setConfig({
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: current.voice },
-        },
-      },
-      systemInstruction: {
-        parts: [
-          {
-            text: createSystemInstructions(current, user),
+    const setupConfig = async () => {
+      const systemInstructions = await createSystemInstructions(current, user);
+      setConfig({
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: current.voice },
           },
-        ],
-      },
-    });
+        },
+
+        systemInstruction: {
+          parts: [
+            {
+              text: systemInstructions,
+            },
+          ],
+        },
+      });
+    };
+    
+    setupConfig();
   }, [setConfig, user, current]);
 
   // Initiate the session when the Live API connection is established

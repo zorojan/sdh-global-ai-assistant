@@ -21,6 +21,7 @@ export interface OpenAIRealtimeConfig {
   temperature?: number;
   maxResponseOutputTokens?: number;
   systemMessage?: string;
+  agentId?: string;
 }
 
 export class OpenAIRealtimeClient {
@@ -121,7 +122,12 @@ export class OpenAIRealtimeClient {
       await this.peerConnection.setLocalDescription(offer);
 
       // Send offer to backend for OpenAI Realtime API (per OpenAI WebRTC docs)
-      const response = await fetch(`${this.apiUrl}/api/realtime/session`, {
+      const url = new URL(`${this.apiUrl}/api/realtime/session`);
+      if (this.config.agentId) {
+        url.searchParams.set('agentId', this.config.agentId);
+      }
+      
+      const response = await fetch(url.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/sdp',
