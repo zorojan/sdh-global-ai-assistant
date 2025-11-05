@@ -51,8 +51,24 @@
       "dest": "/api/index.ts"
     },
     {
-      "src": "/(.*)",
+      "src": "^/$",
+      "dest": "/frontend/index.html"
+    },
+    {
+      "src": "/widget.html",
+      "dest": "/frontend/widget.html"
+    },
+    {
+      "src": "/test-openai-realtime.html",
+      "dest": "/frontend/test-openai-realtime.html"
+    },
+    {
+      "src": "/(.*\\.(js|css|ico|png|jpg|jpeg|svg|gif|woff|woff2|ttf|eot))$",
       "dest": "/frontend/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/index.html"
     }
   ]
 }
