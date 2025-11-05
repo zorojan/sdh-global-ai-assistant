@@ -4,6 +4,8 @@ const nextConfig = {
   swcMinify: false,
   generateEtags: false,
   poweredByHeader: false,
+  output: 'standalone',
+  trailingSlash: true,
   
   webpack: (config, { dev, isServer }) => {
     if (dev && !isServer) {
@@ -47,7 +49,18 @@ const nextConfig = {
   },
   
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:3001/api'),
+  },
+  
+  basePath: process.env.NODE_ENV === 'production' ? '/admin' : '',
+  
+  async rewrites() {
+    return process.env.NODE_ENV === 'production' ? [] : [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:3001/api/:path*',
+      },
+    ];
   },
 }
 

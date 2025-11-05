@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import SettingsTab from './SettingsTab'
 import AgentsTab from './AgentsTab'
-import TestTab from './TestTab'
 import WidgetGenerator from './WidgetGenerator'
 
 export default function Dashboard() {
@@ -15,7 +14,6 @@ export default function Dashboard() {
     { id: 'settings', name: 'Настройки', icon: '⚙️' },
     { id: 'agents', name: 'Агенты', icon: '🤖' },
     { id: 'widgets', name: 'Виджеты', icon: '🔗' },
-    { id: 'test', name: 'Тест', icon: '🧪' },
   ]
 
   return (
@@ -76,7 +74,6 @@ export default function Dashboard() {
             {activeTab === 'settings' && <SettingsTab />}
             {activeTab === 'agents' && <AgentsTab />}
             {activeTab === 'widgets' && <WidgetGenerator />}
-            {activeTab === 'test' && <TestTab />}
           </main>
         </div>
       </div>

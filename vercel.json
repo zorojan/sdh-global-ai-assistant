@@ -2,35 +2,18 @@
   "version": 2,
   "builds": [
     {
-      "src": "backend/src/server.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["backend/src/**", "backend/package.json", "shared/**"]
-      }
+      "src": "api/index.ts",
+      "use": "@vercel/node"
     },
     {
-      "src": "admin-panel/package.json",
-      "use": "@vercel/next",
-      "config": {
-        "distDir": ".next"
-      }
-    },
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+      "src": "frontend/package.json",  
+      "use": "@vercel/static-build"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/backend/src/server.ts"
-    },
-    {
-      "src": "/admin/(.*)",
-      "dest": "/admin-panel/$1"
+      "dest": "/api/index.ts"
     },
     {
       "src": "/(.*)",
@@ -38,11 +21,8 @@
     }
   ],
   "functions": {
-    "backend/src/server.ts": {
+    "api/index.ts": {
       "maxDuration": 60
     }
-  },
-  "env": {
-    "NODE_ENV": "production"
   }
 }
