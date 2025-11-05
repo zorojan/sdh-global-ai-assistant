@@ -53,6 +53,14 @@
       "dest": "/api/index.ts"
     },
     {
+      "src": "^/admin$",
+      "dest": "https://sdh-global-ai-assistant-admin-panel-7lqv3yxu1.vercel.app/"
+    },
+    {
+      "src": "^/admin/(.*)",
+      "dest": "https://sdh-global-ai-assistant-admin-panel-7lqv3yxu1.vercel.app/$1"
+    },
+    {
       "src": "^/$",
       "dest": "/frontend/index.html"
     },
