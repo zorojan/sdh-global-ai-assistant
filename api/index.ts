@@ -37,12 +37,4 @@ app.use('/auth', authRoutes);
 app.use('/realtime', realtimeRoutes);
 
 // Export for Vercel
-export default (req: any, res: any) => {
-  // Add /api prefix handling
-  const originalUrl = req.url;
-  if (originalUrl?.startsWith('/api')) {
-    req.url = originalUrl.substring(4);
-  }
-  
-  return app(req, res);
-};
+export default app;

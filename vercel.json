@@ -9,35 +9,50 @@
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "buildCommand": "npm run build",
         "distDir": "dist"
       }
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
+      "src": "/api/health",
       "dest": "/api/index.ts"
     },
     {
-      "src": "/widget.html",
-      "dest": "/frontend/widget.html"
+      "src": "/api/agents",
+      "dest": "/api/index.ts"
     },
     {
-      "src": "/test-openai-realtime.html", 
-      "dest": "/frontend/test-openai-realtime.html"
+      "src": "/api/agents/(.*)",
+      "dest": "/api/index.ts"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "/frontend/assets/$1"
+      "src": "/api/settings",
+      "dest": "/api/index.ts"
     },
     {
-      "src": "/(.*\\.(js|css|ico|png|jpg|jpeg|svg|gif|woff|woff2|ttf|eot))",
-      "dest": "/frontend/$1"
+      "src": "/api/settings/(.*)",
+      "dest": "/api/index.ts"
+    },
+    {
+      "src": "/api/auth",
+      "dest": "/api/index.ts"
+    },
+    {
+      "src": "/api/auth/(.*)",
+      "dest": "/api/index.ts"
+    },
+    {
+      "src": "/api/realtime",
+      "dest": "/api/index.ts"
+    },
+    {
+      "src": "/api/realtime/(.*)",
+      "dest": "/api/index.ts"
     },
     {
       "src": "/(.*)",
-      "dest": "/frontend/index.html"
+      "dest": "/frontend/$1"
     }
   ]
 }
