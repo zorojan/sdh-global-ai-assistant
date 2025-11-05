@@ -51,8 +51,8 @@ export default function SettingsTab() {
     else if (setting.key.includes('gemini') || ['default_model', 'message_dialog_model'].includes(setting.key)) {
       group = 'gemini'
     }
-    // OpenAI specific settings including voice/language (only for OpenAI)
-    else if (setting.key.includes('openai') || ['default_language', 'default_voice'].includes(setting.key)) {
+    // OpenAI specific settings including Realtime voice/language
+    else if (setting.key.includes('openai') || ['openai_voice', 'realtime_language'].includes(setting.key)) {
       group = 'openai'
     }
     // General system settings
@@ -80,10 +80,10 @@ export default function SettingsTab() {
     // Filter based on provider with clear separation
     switch (currentProvider) {
       case 'openai':
-        // OpenAI: show OpenAI settings + voice/language settings
+        // OpenAI: show OpenAI settings + Realtime voice/language settings
         return settingKey.includes('openai') || 
-               settingKey === 'default_language' || 
-               settingKey === 'default_voice'
+               settingKey === 'openai_voice' || 
+               settingKey === 'realtime_language'
       case 'gemini':
         // Gemini: show Gemini settings + model settings + Gemini voice/language
         return settingKey.includes('gemini') || 
@@ -291,6 +291,20 @@ export default function SettingsTab() {
                             <option value="openai">🤖 OpenAI только</option>
                             <option value="hybrid">🔄 Гибридный режим</option>
                           </select>
+                        ) : setting.type === 'select' && setting.key === 'realtime_language' ? (
+                          <select
+                            value={setting.value}
+                            onChange={(e) => handleSelectChange(setting.key, e.target.value)}
+                            disabled={updateMutation.isLoading}
+                            className="flex-1 form-select border border-gray-300 rounded-md px-3 py-2 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                          >
+                            <option value="en-US">🇺🇸 English (US) - Native support</option>
+                            <option value="en-GB">🇬🇧 English (UK) - Native support</option>
+                            <option value="es-ES">🇪🇸 Spanish - Native support</option>
+                            <option value="fr-FR">🇫🇷 French - Native support</option>
+                            <option value="de-DE">🇩🇪 German - Native support</option>
+                            <option value="hy-AM">🇦🇲 Armenian - Hybrid mode (ASR+TTS)</option>
+                          </select>
                         ) : setting.type === 'select' && setting.key === 'default_language' ? (
                           <select
                             value={setting.value}
@@ -303,19 +317,23 @@ export default function SettingsTab() {
                             <option value="ru">🇷🇺 Русский</option>
                             <option value="auto">🌐 Автоопределение</option>
                           </select>
-                        ) : setting.type === 'select' && setting.key === 'default_voice' ? (
+                        ) : setting.type === 'select' && setting.key === 'openai_voice' ? (
                           <select
                             value={setting.value}
                             onChange={(e) => handleSelectChange(setting.key, e.target.value)}
                             disabled={updateMutation.isLoading}
                             className="flex-1 form-select border border-gray-300 rounded-md px-3 py-2 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                           >
-                            <option value="nova">✨ Nova (рекомендуется для армянского)</option>
-                            <option value="alloy">🎭 Alloy (нейтральный)</option>
-                            <option value="echo">👨 Echo (мужской)</option>
-                            <option value="fable">🎎 Fable (британский)</option>
-                            <option value="onyx">🎪 Onyx (глубокий)</option>
-                            <option value="shimmer">🌟 Shimmer (мягкий)</option>
+                            <option value="alloy">🎭 Alloy - Neutral, balanced voice</option>
+                            <option value="ash">🏔️ Ash - Deep, authoritative voice (masculine)</option>
+                            <option value="ballad">� Ballad - Soft, melodic voice (feminine)</option>
+                            <option value="coral">🌺 Coral - Warm, friendly voice (feminine)</option>
+                            <option value="echo">� Echo - Clear, professional voice (masculine)</option>
+                            <option value="sage">🧙‍♀️ Sage - Wise, calming voice (feminine)</option>
+                            <option value="shimmer">✨ Shimmer - Bright, energetic voice (feminine)</option>
+                            <option value="verse">� Verse - Expressive, dynamic voice (masculine)</option>
+                            <option value="marin">🌊 Marin - Gentle, soothing voice (feminine)</option>
+                            <option value="cedar">� Cedar - Rich, natural voice (masculine)</option>
                           </select>
                         ) : setting.type === 'select' && setting.key === 'gemini_default_voice' ? (
                           <select

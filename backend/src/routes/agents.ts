@@ -585,122 +585,84 @@ router.post('/chat', async (req: any, res: express.Response) => {
     // Apply Armenian language instructions
     const systemPrompt = generateArmenianSystemPrompt(baseSystemPrompt);
 
-    // Prepare messages for Gemini
+    // Get settings
+    const settings = await all('SELECT * FROM settings') as any[];
+    const aiProviderSetting = settings.find((s: any) => s.key === 'ai_provider');
+    const activeProvider = provider || aiProviderSetting?.value || 'gemini';
+
+    console.log(`Using AI provider: ${activeProvider}`);
+
+    // Prepare messages
     const messages = [];
     
-    // Add system prompt
-    messages.push({
-      role: 'user',
-      parts: [{ text: `System: ${systemPrompt}` }]
-    });
-    
-    // Add conversation history if provided
+    // Add conversation history
     if (history && history.length > 0) {
       history.forEach((msg: any) => {
-        if (msg.role === 'user') {
-          messages.push({
-            role: 'user',
-            parts: [{ text: msg.content }]
-          });
-        } else if (msg.role === 'assistant') {
-          messages.push({
-            role: 'model',
-            parts: [{ text: msg.content }]
-          });
-        }
+        messages.push({
+          role: msg.role === 'assistant' ? 'model' : msg.role,
+          parts: [{ text: msg.content }],
+          content: msg.content
+        });
       });
     }
     
     // Add current user message
     messages.push({
       role: 'user',
-      parts: [{ text: message }]
+      parts: [{ text: message }],
+      content: message
     });
 
-    // Get Gemini API key from settings
-    const settings = await all('SELECT * FROM settings') as any[];
-    const geminiApiKeySetting = settings.find((s: any) => s.key === 'gemini_api_key');
-    
-    if (!geminiApiKeySetting || !geminiApiKeySetting.value || geminiApiKeySetting.value === 'your-api-key-here') {
-      console.error('Gemini API key not configured');
-      return res.status(500).json({ 
-        error: 'AI service is not configured. Please set up the Gemini API key in the admin panel.' 
-      });
-    }
+    let assistantResponse: string;
 
-    const apiKey = geminiApiKeySetting.value;
-
-    // Call Gemini API
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: messages,
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error(`Gemini API error: ${response.status} - ${errorData}`);
+    if (activeProvider === 'openai') {
+      // Use OpenAI
+      const openaiApiKeySetting = settings.find((s: any) => s.key === 'openai_api_key');
       
-      const status = response.status;
-      if (status === 503) {
-        return res.status(503).json({ 
-          error: 'AI service is temporarily unavailable. This usually means the API quota has been exceeded or the service is down. Please try again later or check your API key configuration.' 
-        });
-      } else if (status === 429) {
-        return res.status(429).json({ 
-          error: 'Too many requests. Please wait a moment before trying again.' 
-        });
-      } else if (status === 401) {
-        return res.status(401).json({ 
-          error: 'Invalid API key. Please check your Gemini API key configuration in the admin panel.' 
-        });
-      } else if (status === 400) {
-        const errorMessage = errorData || 'Invalid request. Please check your message and try again.';
-        console.error('400 Bad Request - Error message:', errorMessage);
-        return res.status(400).json({ 
-          error: errorMessage
+      if (!openaiApiKeySetting || !openaiApiKeySetting.value) {
+        return res.status(500).json({ 
+          error: 'OpenAI API key is not configured. Please set up the OpenAI API key in the admin panel.' 
         });
       }
+
+      try {
+        assistantResponse = await callOpenAI(messages, systemPrompt, openaiApiKeySetting.value);
+        console.log('✅ OpenAI response received');
+      } catch (error: any) {
+        console.error('❌ OpenAI API error:', error);
+        return res.status(500).json({ 
+          error: `OpenAI API error: ${error.message}` 
+        });
+      }
+    } else {
+      // Use Gemini (default)
+      const geminiApiKeySetting = settings.find((s: any) => s.key === 'gemini_api_key');
       
-      return res.status(status).json({ error: 'Failed to get response from AI' });
-    }
+      if (!geminiApiKeySetting || !geminiApiKeySetting.value) {
+        return res.status(500).json({ 
+          error: 'Gemini API key is not configured. Please set up the Gemini API key in the admin panel.' 
+        });
+      }
 
-    const data = await response.json() as any;
-    
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      console.error('Unexpected response format from Gemini:', data);
-      return res.status(500).json({ error: 'Unexpected response format from AI service' });
-    }
+      // Prepare Gemini format messages (with system prompt)
+      const geminiMessages = [
+        {
+          role: 'user',
+          parts: [{ text: `System: ${systemPrompt}` }]
+        },
+        ...messages
+      ];
 
-    const assistantResponse = data.candidates[0].content.parts[0].text;
+      try {
+        assistantResponse = await callGemini(geminiMessages, geminiApiKeySetting.value);
+        console.log('✅ Gemini response received');
+      } catch (error: any) {
+        console.error('❌ Gemini API error:', error);
+        return res.status(500).json({ 
+          error: `Gemini API error: ${error.message}` 
+        });
+      }
+    }
     
     res.json({ 
       response: assistantResponse,

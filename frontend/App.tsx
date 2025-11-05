@@ -142,7 +142,7 @@ function App() {
   }, [apiKey, setAvailableAgents]);
 
   const handleSendMessage = async (message: string, agentId: string) => {
-    return await api.sendMessage(agentId, message);
+    return await api.sendMessage(agentId, message, aiProvider);
   };
 
   // Show loading state while fetching API key
@@ -205,19 +205,23 @@ function App() {
                   aiProvider === 'gemini' ? (
                     <KeynoteCompanion />
                   ) : (
-                    <EnhancedVoiceChatWidget 
-                      agent={current}
-                      geminiApiKey={apiKey}
-                      apiUrl={API_BASE_URL}
-                      initialProvider={aiProvider === 'openai' ? 'openai' : 'gemini'}
-                      allowProviderSelection={aiProvider === 'hybrid'}
-                    />
+                    <div className="openai-voice-interface">
+                      <EnhancedVoiceChatWidget 
+                        agent={current}
+                        geminiApiKey={apiKey}
+                        apiUrl={API_BASE_URL}
+                        initialProvider={aiProvider === 'openai' ? 'openai' : 'gemini'}
+                        allowProviderSelection={aiProvider === 'hybrid'}
+                        showAnimatedFace={false}
+                      />
+                    </div>
                   )
                 ) : (
                   <TextChat
                     agentId={current.id}
                     agentName={current.name}
                     onSendMessage={handleSendMessage}
+                    currentProvider={aiProvider}
                   />
                 )}
               </div>

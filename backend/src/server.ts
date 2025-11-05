@@ -19,14 +19,18 @@ app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5180', 'http://localhost:3000'], // Frontend ports and Admin Panel
   credentials: true
 }));
+
+// Routes - realtime needs to be before express.json() to handle raw SDP
+app.use('/api/realtime', realtimeRoutes);
+
+// JSON middleware after realtime routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
+// Other routes
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/agents', agentsRoutes);
-app.use('/api/realtime', realtimeRoutes);
 
 // Public endpoint for API key (needed by frontend)
 app.get('/api/public/apikey', async (req, res) => {

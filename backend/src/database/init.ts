@@ -130,6 +130,30 @@ const insertDefaultData = async (): Promise<void> => {
       value: 'true',
       description: 'Enable audio functionality',
       type: 'boolean'
+    },
+    {
+      key: 'ai_provider',
+      value: 'gemini',
+      description: 'AI Provider (gemini, openai, hybrid)',
+      type: 'select'
+    },
+    {
+      key: 'openai_api_key',
+      value: process.env.OPENAI_API_KEY || '',
+      description: 'OpenAI API Key',
+      type: 'password'
+    },
+    {
+      key: 'openai_voice',
+      value: 'alloy',
+      description: 'OpenAI Realtime Voice (alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar)',
+      type: 'select'
+    },
+    {
+      key: 'realtime_language',
+      value: 'en-US',
+      description: 'OpenAI Realtime Language (en-US, en-GB, es-ES, fr-FR, de-DE, hy-AM)',
+      type: 'select'
     }
   ];
 

@@ -65,10 +65,12 @@ export const api = {
   },
 
   // Send text message to agent
-  sendMessage: async (agentId: string, message: string): Promise<string> => {
+  sendMessage: async (agentId: string, message: string, provider?: string): Promise<string> => {
     try {
-      const response = await apiClient.post(`/agents/${agentId}/message`, {
-        message: message
+      const response = await apiClient.post('/agents/chat', {
+        message: message,
+        agentId: agentId,
+        provider: provider
       })
       return response.data.response
     } catch (error) {

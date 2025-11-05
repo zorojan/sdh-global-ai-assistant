@@ -13,9 +13,10 @@ interface TextChatProps {
   agentId: string;
   agentName: string;
   onSendMessage: (message: string, agentId: string) => Promise<string>;
+  currentProvider?: string;
 }
 
-export function TextChat({ agentId, agentName, onSendMessage }: TextChatProps) {
+export function TextChat({ agentId, agentName, onSendMessage, currentProvider = 'gemini' }: TextChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -89,7 +90,21 @@ export function TextChat({ agentId, agentName, onSendMessage }: TextChatProps) {
   return (
     <div className="text-chat">
       <div className="chat-header">
-        <h3>💬 Chat with {agentName}</h3>
+        <div className="flex items-center justify-between">
+          <h3>💬 Chat with {agentName}</h3>
+          <div className="provider-indicator">
+            {currentProvider === 'gemini' && (
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                🔷 Gemini
+              </span>
+            )}
+            {currentProvider === 'openai' && (
+              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                🤖 OpenAI
+              </span>
+            )}
+          </div>
+        </div>
       </div>
       
       <div className="messages-container">

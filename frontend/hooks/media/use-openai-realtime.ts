@@ -38,7 +38,8 @@ export class OpenAIRealtimeClient {
   private onError?: (error: string) => void;
 
   constructor(apiUrl: string = 'http://localhost:3001') {
-    this.apiUrl = apiUrl;
+    // Remove /api suffix if present to avoid /api/api/realtime/session
+    this.apiUrl = apiUrl.endsWith('/api') ? apiUrl.slice(0, -4) : apiUrl;
   }
 
   setConfig(config: OpenAIRealtimeConfig) {
@@ -119,29 +120,26 @@ export class OpenAIRealtimeClient {
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
 
-      // Send offer to backend for OpenAI Realtime API
+      // Send offer to backend for OpenAI Realtime API (per OpenAI WebRTC docs)
       const response = await fetch(`${this.apiUrl}/api/realtime/session`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/sdp',
         },
-        body: JSON.stringify({
-          sdp: offer,
-          config: this.config
-        })
+        body: offer.sdp
       });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const { sdp: answerSdp } = await response.json();
+      const answerSdp = await response.text();
       
       if (!answerSdp) {
         throw new Error('No SDP answer received from server');
       }
 
-      // Set remote description
+      // Set remote description  
       await this.peerConnection.setRemoteDescription({
         type: 'answer',
         sdp: answerSdp

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI Realtime WebRTC Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            margin: 10px; 
+            border-radius: 4px; 
+            cursor: pointer;
+        }
+        .button:hover { background: #0056b3; }
+        .button:disabled { background: #ccc; cursor: not-allowed; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .status.success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .status.error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .status.info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        .logs { background: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; margin: 10px 0; border-radius: 4px; max-height: 300px; overflow-y: auto; }
+        select { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 200px; margin: 10px; }
+        select:disabled { background: #f5f5f5; color: #999; }
+    </style>
+</head>
+<body>
+    <h1>🎤 OpenAI Realtime WebRTC Test</h1>
+    
+    <div class="test-section">
+        <h2>📊 Backend Status Check</h2>
+        <button class="button" onclick="checkBackendStatus()">Check Backend Status</button>
+        <button class="button" onclick="checkOpenAICapabilities()">Check OpenAI Capabilities</button>
+        <button class="button" onclick="loadVoices()">Load Available Voices</button>
+        <div id="backend-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🎭 Voice Selection</h2>
+        <p>Choose OpenAI Realtime voice for speech-to-speech interaction:</p>
+        <select id="voice-selector" onchange="updateVoice()" disabled>
+            <option value="">Loading voices...</option>
+        </select>
+        <div id="voice-info"></div>
+        <div id="voice-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🎙️ OpenAI Realtime WebRTC Test</h2>
+        <p>This test connects directly to OpenAI Realtime API via WebRTC through our backend proxy.</p>
+        
+        <button id="connect-btn" class="button" onclick="connectRealtime()">Connect to OpenAI Realtime</button>
+        <button id="disconnect-btn" class="button" onclick="disconnectRealtime()" disabled>Disconnect</button>
+        
+        <div id="connection-status"></div>
+        <div id="logs" class="logs"></div>
+    </div>
+
+    <script>
+        let peerConnection = null;
+        let dataChannel = null;
+        let audioElement = null;
+        let availableVoices = [];
+
+        function log(message) {
+            const logs = document.getElementById('logs');
+            logs.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`;
+            logs.scrollTop = logs.scrollHeight;
+            console.log(message);
+        }
+
+        function setStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        async function checkBackendStatus() {
+            try {
+                const response = await fetch('http://localhost:3001/api/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    setStatus('backend-status', `✅ Backend is running (${data.timestamp})`, 'success');
+                } else {
+                    setStatus('backend-status', '❌ Backend health check failed', 'error');
+                }
+            } catch (error) {
+                setStatus('backend-status', `❌ Backend not accessible: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkOpenAICapabilities() {
+            try {
+                const response = await fetch('http://localhost:3001/api/realtime/capabilities');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.available) {
+                        const supportInfo = `
+                            <strong>✅ OpenAI Realtime Available</strong><br>
+                            Model: ${data.model}<br>
+                            Current Voice: ${data.voice}<br>
+                            Language: ${data.language}<br>
+                            Supported Voices: ${data.supportedVoices.length}<br>
+                            Languages: ${data.supportedLanguages.length} (Armenian hybrid mode available)
+                        `;
+                        setStatus('backend-status', supportInfo, 'success');
+                    } else {
+                        setStatus('backend-status', '⚠️ OpenAI API key not configured', 'error');
+                    }
+                } else {
+                    setStatus('backend-status', '❌ OpenAI capabilities check failed', 'error');
+                }
+            } catch (error) {
+                setStatus('backend-status', `❌ Error checking OpenAI: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadVoices() {
+            try {
+                const response = await fetch('http://localhost:3001/api/realtime/voices');
+                if (response.ok) {
+                    const data = await response.json();
+                    availableVoices = data.voices;
+                    
+                    const selector = document.getElementById('voice-selector');
+                    selector.innerHTML = '<option value="">Select a voice...</option>';
+                    
+                    data.voices.forEach(voice => {
+                        const option = document.createElement('option');
+                        option.value = voice.id;
+                        option.textContent = `${voice.name} - ${voice.description}`;
+                        selector.appendChild(option);
+                    });
+                    
+                    selector.disabled = false;
+                    setStatus('voice-status', `✅ Loaded ${data.voices.length} voices`, 'success');
+                } else {
+                    setStatus('voice-status', '❌ Failed to load voices', 'error');
+                }
+            } catch (error) {
+                setStatus('voice-status', `❌ Error loading voices: ${error.message}`, 'error');
+            }
+        }
+
+        async function updateVoice() {
+            try {
+                const selector = document.getElementById('voice-selector');
+                const selectedVoice = selector.value;
+                
+                if (!selectedVoice) return;
+
+                const voice = availableVoices.find(v => v.id === selectedVoice);
+                if (voice) {
+                    document.getElementById('voice-info').innerHTML = `
+                        <div class="status info">
+                            <strong>${voice.name}</strong><br>
+                            ${voice.description}<br>
+                            Gender: ${voice.gender}
+                        </div>
+                    `;
+                }
+
+                const response = await fetch('http://localhost:3001/api/realtime/voice', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voice: selectedVoice })
+                });
+
+                if (response.ok) {
+                    setStatus('voice-status', `✅ Voice updated to ${voice.name}`, 'success');
+                } else {
+                    setStatus('voice-status', '❌ Failed to update voice', 'error');
+                }
+            } catch (error) {
+                setStatus('voice-status', `❌ Error updating voice: ${error.message}`, 'error');
+            }
+        }
+
+        async function connectRealtime() {
+            try {
+                document.getElementById('connect-btn').disabled = true;
+                log('🚀 Starting OpenAI Realtime WebRTC connection...');
+                setStatus('connection-status', '🔄 Connecting...', 'info');
+
+                // Create peer connection
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+
+                // Set up audio element for output
+                audioElement = document.createElement("audio");
+                audioElement.autoplay = true;
+
+                // Handle incoming audio stream
+                peerConnection.ontrack = (e) => {
+                    log('🎧 Received audio track from OpenAI');
+                    audioElement.srcObject = e.streams[0];
+                    setStatus('connection-status', '✅ Connected! Audio stream active', 'success');
+                    document.getElementById('disconnect-btn').disabled = false;
+                };
+
+                // Handle connection state
+                peerConnection.onconnectionstatechange = () => {
+                    log(`🔗 Connection state: ${peerConnection.connectionState}`);
+                    if (peerConnection.connectionState === 'failed') {
+                        setStatus('connection-status', '❌ Connection failed', 'error');
+                        document.getElementById('connect-btn').disabled = false;
+                    }
+                };
+
+                // Add microphone
+                log('🎤 Requesting microphone access...');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 24000
+                    } 
+                });
+                const audioTrack = stream.getTracks()[0];
+                peerConnection.addTrack(audioTrack, stream);
+                log('✅ Microphone added to peer connection');
+
+                // Create data channel
+                dataChannel = peerConnection.createDataChannel("oai-events");
+                log('📡 Data channel created');
+
+                dataChannel.onopen = () => {
+                    log('📡 Data channel opened');
+                    
+                    // Send initial message to test
+                    const testMessage = {
+                        type: "conversation.item.create",
+                        item: {
+                            type: "message",
+                            role: "user",
+                            content: [{
+                                type: "input_text",
+                                text: "Hello! Can you hear me? Please respond with voice."
+                            }]
+                        }
+                    };
+                    dataChannel.send(JSON.stringify(testMessage));
+                    log('📤 Sent test message to OpenAI');
+                };
+
+                dataChannel.onmessage = (e) => {
+                    const event = JSON.parse(e.data);
+                    log(`📨 OpenAI Event: ${event.type}`);
+                };
+
+                dataChannel.onerror = (error) => {
+                    log(`❌ Data channel error: ${error}`);
+                };
+
+                // Create offer
+                log('📡 Creating SDP offer...');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+
+                // Send to backend proxy
+                log('🔗 Sending SDP to backend proxy...');
+                const sdpResponse = await fetch('http://localhost:3001/api/realtime/session', {
+                    method: "POST",
+                    body: offer.sdp,
+                    headers: {
+                        "Content-Type": "application/sdp",
+                    },
+                });
+
+                if (!sdpResponse.ok) {
+                    const errorText = await sdpResponse.text();
+                    throw new Error(`SDP exchange failed: ${sdpResponse.status} - ${errorText}`);
+                }
+
+                const answerSdp = await sdpResponse.text();
+                log('✅ Received SDP answer from backend');
+
+                // Set remote description
+                const answer = {
+                    type: "answer",
+                    sdp: answerSdp,
+                };
+                await peerConnection.setRemoteDescription(answer);
+                log('🎯 WebRTC connection established!');
+
+            } catch (error) {
+                log(`❌ Connection error: ${error.message}`);
+                setStatus('connection-status', `❌ Connection failed: ${error.message}`, 'error');
+                document.getElementById('connect-btn').disabled = false;
+            }
+        }
+
+        async function disconnectRealtime() {
+            try {
+                log('🔌 Disconnecting...');
+                
+                if (dataChannel) {
+                    dataChannel.close();
+                    dataChannel = null;
+                }
+
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
+                }
+
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement.srcObject = null;
+                    audioElement = null;
+                }
+
+                setStatus('connection-status', '⭕ Disconnected', 'info');
+                document.getElementById('connect-btn').disabled = false;
+                document.getElementById('disconnect-btn').disabled = true;
+                log('✅ Disconnected successfully');
+
+            } catch (error) {
+                log(`❌ Disconnect error: ${error.message}`);
+            }
+        }
+
+        // Auto-check backend on load
+        window.onload = () => {
+            checkBackendStatus();
+            setTimeout(checkOpenAICapabilities, 500);
+            setTimeout(loadVoices, 1000);
+        };
+    </script>
+</body>
+</html>

@@ -8,8 +8,35 @@ import { AudioRecorder } from '../lib/audio-recorder';
 import { LiveAPIProviderWidget, useLiveAPIContextWidget } from '../contexts/LiveAPIContextWidget';
 import { OpenAIRealtimeProvider, useOpenAIRealtimeContext } from '../contexts/OpenAIRealtimeContext';
 import BasicFaceWidget from './demo/basic-face/BasicFaceWidget';
+import BasicFace from './demo/basic-face/BasicFace';
 
 type VoiceProvider = 'gemini' | 'openai';
+
+// Animated Face Component for OpenAI similar to Gemini's BasicFace
+const AnimatedOpenAIFace: React.FC<{ volume: number; isActive: boolean }> = ({ volume, isActive }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  return (
+    <div className="animated-face-container">
+      <canvas 
+        ref={canvasRef}
+        width={256} 
+        height={256}
+        className="animated-face-canvas"
+        style={{
+          background: 'transparent',
+          borderRadius: '50%',
+        }}
+      />
+      <BasicFace 
+        canvasRef={canvasRef}
+        isActive={isActive}
+        color="#00a67e"
+        radius={128}
+      />
+    </div>
+  );
+};
 
 interface EnhancedVoiceChatProps {
   agent: any;
@@ -17,6 +44,7 @@ interface EnhancedVoiceChatProps {
   apiUrl?: string;
   initialProvider?: 'gemini' | 'openai';
   allowProviderSelection?: boolean; // true для hybrid режима
+  showAnimatedFace?: boolean; // показывать анимированное лицо для OpenAI
 }
 
 // Provider Selection Component
@@ -203,12 +231,73 @@ const GeminiVoiceChat: React.FC<{ agent: any }> = ({ agent }) => {
   );
 };
 
+// Simple Face Component for OpenAI (no LiveAPI dependency)
+const SimpleFaceWidget: React.FC<{ 
+  radius?: number; 
+  color?: string; 
+  isActive?: boolean; 
+}> = ({ radius = 80, color = "#00a67e", isActive = false }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const size = radius * 2;
+    canvas.width = size;
+    canvas.height = size;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, size, size);
+
+    // Draw face circle
+    ctx.beginPath();
+    ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
+    ctx.fillStyle = isActive ? color : '#e0e0e0';
+    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw eyes
+    const eyeY = radius - 20;
+    const eyeRadius = isActive ? 8 : 6;
+    
+    // Left eye
+    ctx.beginPath();
+    ctx.arc(radius - 25, eyeY, eyeRadius, 0, 2 * Math.PI);
+    ctx.fillStyle = '#333';
+    ctx.fill();
+
+    // Right eye
+    ctx.beginPath();
+    ctx.arc(radius + 25, eyeY, eyeRadius, 0, 2 * Math.PI);
+    ctx.fillStyle = '#333';
+    ctx.fill();
+
+    // Draw mouth
+    const mouthY = radius + 15;
+    const mouthWidth = isActive ? 40 : 20;
+    
+    ctx.beginPath();
+    ctx.arc(radius, mouthY, mouthWidth / 2, 0, Math.PI);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+  }, [radius, color, isActive]);
+
+  return <canvas ref={canvasRef} style={{ display: 'block' }} />;
+};
+
 // OpenAI Realtime Chat Implementation
-const OpenAIRealtimeChat: React.FC<{ agent: any }> = ({ agent }) => {
+const OpenAIRealtimeChat: React.FC<{ agent: any; showAnimatedFace?: boolean }> = ({ agent, showAnimatedFace = false }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const {
     client,
@@ -265,12 +354,18 @@ const OpenAIRealtimeChat: React.FC<{ agent: any }> = ({ agent }) => {
       )}
       
       <div className="voice-face-container">
-        <BasicFaceWidget
-          canvasRef={canvasRef}
-          radius={80} 
-          color="#00a67e"
-          isActive={connected && volume > 0}
-        />
+        {showAnimatedFace ? (
+          <AnimatedOpenAIFace 
+            volume={volume}
+            isActive={connected && volume > 0}
+          />
+        ) : (
+          <SimpleFaceWidget
+            radius={80} 
+            color="#00a67e"
+            isActive={connected && volume > 0}
+          />
+        )}
       </div>
       
       <div className="voice-controls">
@@ -316,7 +411,8 @@ const EnhancedVoiceChatInner: React.FC<{
   voiceProvider: VoiceProvider; 
   onProviderChange: (provider: VoiceProvider) => void;
   allowProviderSelection: boolean;
-}> = ({ agent, voiceProvider, onProviderChange, allowProviderSelection }) => {
+  showAnimatedFace?: boolean;
+}> = ({ agent, voiceProvider, onProviderChange, allowProviderSelection, showAnimatedFace = false }) => {
   
   return (
     <div className="enhanced-voice-chat-widget">
@@ -340,7 +436,7 @@ const EnhancedVoiceChatInner: React.FC<{
         {voiceProvider === 'gemini' ? (
           <GeminiVoiceChat agent={agent} />
         ) : (
-          <OpenAIRealtimeChat agent={agent} />
+          <OpenAIRealtimeChat agent={agent} showAnimatedFace={showAnimatedFace} />
         )}
       </div>
     </div>
@@ -353,11 +449,17 @@ export const EnhancedVoiceChatWidget: React.FC<EnhancedVoiceChatProps> = ({
   geminiApiKey, 
   apiUrl = 'http://localhost:3001',
   initialProvider = 'gemini',
-  allowProviderSelection = false
+  allowProviderSelection = false,
+  showAnimatedFace = false
 }) => {
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>(initialProvider);
 
-  console.log('🎤 EnhancedVoiceChatWidget: Provider:', voiceProvider, 'AllowSelection:', allowProviderSelection);
+  // Sync with initialProvider changes
+  useEffect(() => {
+    setVoiceProvider(initialProvider);
+  }, [initialProvider]);
+
+  console.log('🎤 EnhancedVoiceChatWidget: Provider:', voiceProvider, 'AllowSelection:', allowProviderSelection, 'InitialProvider:', initialProvider);
   
   return (
     <div className="provider-wrapper">
@@ -368,6 +470,7 @@ export const EnhancedVoiceChatWidget: React.FC<EnhancedVoiceChatProps> = ({
             voiceProvider={voiceProvider}
             onProviderChange={setVoiceProvider}
             allowProviderSelection={allowProviderSelection}
+            showAnimatedFace={showAnimatedFace}
           />
         </LiveAPIProviderWidget>
       ) : (
@@ -377,6 +480,7 @@ export const EnhancedVoiceChatWidget: React.FC<EnhancedVoiceChatProps> = ({
             voiceProvider={voiceProvider}
             onProviderChange={setVoiceProvider}
             allowProviderSelection={allowProviderSelection}
+            showAnimatedFace={showAnimatedFace}
           />
         </OpenAIRealtimeProvider>
       )}
