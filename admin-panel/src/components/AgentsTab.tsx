@@ -125,7 +125,9 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
     voice: AVAILABLE_VOICES[0] as any,
     avatar_url: '',
     knowledge_base: '',
-    system_prompt: ''
+    system_prompt: '',
+    language: 'en-US',
+    voice_language: 'en-US'
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -213,6 +215,37 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Язык текста
+            </label>
+            <select
+              value={formData.language}
+              onChange={(e) => setFormData(prev => ({ ...prev, language: e.target.value }))}
+              className="form-input"
+            >
+              <option value="en-US">English (US)</option>
+              <option value="ru-RU">Русский</option>
+              <option value="hy-AM">Հայերեն (Armenian)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Язык голоса
+            </label>
+            <select
+              value={formData.voice_language}
+              onChange={(e) => setFormData(prev => ({ ...prev, voice_language: e.target.value }))}
+              className="form-input"
+            >
+              <option value="en-US">English (US)</option>
+              <option value="ru-RU">Русский</option>
+              <option value="hy-AM">Հայերեն (Armenian)</option>
+            </select>
+          </div>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             База знаний
@@ -269,6 +302,8 @@ function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
     avatar_url: agent?.avatar_url || '',
     knowledge_base: agent?.knowledge_base || '',
     system_prompt: agent?.system_prompt || '',
+    language: agent?.language || 'en-US',
+    voice_language: agent?.voice_language || 'en-US',
     is_active: agent?.is_active ?? true
   })
 
@@ -338,6 +373,37 @@ function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
               {AVAILABLE_VOICES.map(voice => (
                 <option key={voice} value={voice}>{voice}</option>
               ))}
+            </select>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Язык текста
+            </label>
+            <select
+              value={formData.language}
+              onChange={(e) => setFormData(prev => ({ ...prev, language: e.target.value }))}
+              className="form-input"
+            >
+              <option value="en-US">English (US)</option>
+              <option value="ru-RU">Русский</option>
+              <option value="hy-AM">Հայերեն (Armenian)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Язык голоса
+            </label>
+            <select
+              value={formData.voice_language}
+              onChange={(e) => setFormData(prev => ({ ...prev, voice_language: e.target.value }))}
+              className="form-input"
+            >
+              <option value="en-US">English (US)</option>
+              <option value="ru-RU">Русский</option>
+              <option value="hy-AM">Հայերեն (Armenian)</option>
             </select>
           </div>
         </div>
@@ -414,6 +480,9 @@ function AgentCard({ agent, onEdit, onDelete, isDeleting }: any) {
           <div>
             <h3 className="text-lg font-medium text-gray-900">{agent.name}</h3>
             <p className="text-sm text-gray-500">Голос: {agent.voice}</p>
+            {agent.language && (
+              <p className="text-xs text-gray-400">Язык: {agent.language}</p>
+            )}
           </div>
         </div>
       </div>

@@ -77,7 +77,9 @@ router.post('/', authenticateToken, async (req: any, res: express.Response) => {
       voice,
       avatar_url,
       knowledge_base,
-      system_prompt
+      system_prompt,
+      language,
+      voice_language
     } = req.body;
 
     if (!id || !name || !personality || !body_color || !voice) {
@@ -99,11 +101,12 @@ router.post('/', authenticateToken, async (req: any, res: express.Response) => {
     // Create agent
     await run(`
       INSERT INTO agents 
-      (id, name, personality, body_color, voice, avatar_url, knowledge_base, system_prompt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, personality, body_color, voice, avatar_url, knowledge_base, system_prompt, language, voice_language)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id, name, personality, body_color, voice, 
-      avatar_url || null, knowledge_base || null, system_prompt || null
+      avatar_url || null, knowledge_base || null, system_prompt || null,
+      language || 'en-US', voice_language || 'en-US'
     ]);
 
     res.status(201).json({ success: true, message: 'Agent created successfully' });
@@ -125,6 +128,8 @@ router.put('/:id', authenticateToken, async (req: any, res: express.Response) =>
       avatar_url,
       knowledge_base,
       system_prompt,
+      language,
+      voice_language,
       is_active
     } = req.body;
 
@@ -169,6 +174,14 @@ router.put('/:id', authenticateToken, async (req: any, res: express.Response) =>
     if (system_prompt !== undefined) {
       updates.push('system_prompt = ?');
       values.push(system_prompt);
+    }
+    if (language !== undefined) {
+      updates.push('language = ?');
+      values.push(language);
+    }
+    if (voice_language !== undefined) {
+      updates.push('voice_language = ?');
+      values.push(voice_language);
     }
     if (is_active !== undefined) {
       updates.push('is_active = ?');

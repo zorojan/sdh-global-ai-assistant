@@ -81,6 +81,39 @@ const createTables = async (): Promise<void> => {
   `);
 
   console.log('✅ Database tables created');
+
+  // Run migrations
+  await runMigrations();
+};
+
+const runMigrations = async (): Promise<void> => {
+  const run = promisify(db.run.bind(db)) as any;
+  const get = promisify(db.get.bind(db)) as any;
+
+  // Check if language and voice_language columns exist in agents table
+  try {
+    const tableInfo = await new Promise((resolve, reject) => {
+      db.all("PRAGMA table_info(agents)", (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    }) as any[];
+
+    const hasLanguage = tableInfo.some((col: any) => col.name === 'language');
+    const hasVoiceLanguage = tableInfo.some((col: any) => col.name === 'voice_language');
+
+    if (!hasLanguage) {
+      await run('ALTER TABLE agents ADD COLUMN language TEXT DEFAULT "hy-AM"');
+      console.log('✅ Added language column to agents table');
+    }
+
+    if (!hasVoiceLanguage) {
+      await run('ALTER TABLE agents ADD COLUMN voice_language TEXT DEFAULT "hy-AM"');
+      console.log('✅ Added voice_language column to agents table');
+    }
+  } catch (error) {
+    console.error('Migration error:', error);
+  }
 };
 
 const insertDefaultData = async (): Promise<void> => {
@@ -175,6 +208,8 @@ const insertDefaultData = async (): Promise<void> => {
       personality: 'An expert in business strategy, product-market fit, and fundraising. I can help you refine your startup idea, develop a business plan, and navigate the challenges of building a successful company from the ground up.',
       body_color: '#9CCF31',
       voice: 'Orus',
+      language: 'hy-AM', // Armenian for this agent
+      voice_language: 'hy-AM',
       knowledge_base: 'Startup methodology, business planning, fundraising strategies, market analysis',
       system_prompt: 'You are a startup consultant with deep expertise in business strategy and entrepreneurship.'
     },
@@ -184,6 +219,8 @@ const insertDefaultData = async (): Promise<void> => {
       personality: 'A specialist in artificial intelligence and machine learning. I can guide you on integrating AI into your application, choosing the right models, and building intelligent features to give your product a competitive edge.',
       body_color: '#ced4da',
       voice: 'Aoede',
+      language: 'en-US', // English for this agent
+      voice_language: 'en-US',
       knowledge_base: 'Machine learning, AI integration, model selection, AI product development',
       system_prompt: 'You are an AI specialist focused on practical AI implementation for businesses.'
     },
@@ -193,6 +230,8 @@ const insertDefaultData = async (): Promise<void> => {
       personality: 'A senior software architect with deep expertise in system design, scalability, and technology stacks. I can help you design a robust and scalable architecture for your application, choose the right technologies, and ensure a solid technical foundation.',
       body_color: '#adb5bd',
       voice: 'Charon',
+      language: 'ru-RU', // Russian for this agent
+      voice_language: 'ru-RU',
       knowledge_base: 'System architecture, scalability, technology stacks, software design patterns',
       system_prompt: 'You are a senior technical architect with expertise in scalable system design.'
     },
@@ -202,6 +241,8 @@ const insertDefaultData = async (): Promise<void> => {
       personality: 'A DevOps and cloud infrastructure expert. I can advise on best practices for continuous integration, continuous deployment (CI/CD), cloud hosting, and ensuring your application is reliable, scalable, and secure.',
       body_color: '#6c757d',
       voice: 'Puck',
+      language: 'en-US', // English for this agent
+      voice_language: 'en-US',
       knowledge_base: 'DevOps practices, CI/CD, cloud infrastructure, containerization, monitoring',
       system_prompt: 'You are a DevOps expert focused on reliable and scalable infrastructure.'
     }
@@ -211,11 +252,12 @@ const insertDefaultData = async (): Promise<void> => {
     const exists = await get('SELECT id FROM agents WHERE id = ?', [agent.id]);
     if (!exists) {
       await run(`
-        INSERT INTO agents (id, name, personality, body_color, voice, knowledge_base, system_prompt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO agents (id, name, personality, body_color, voice, knowledge_base, system_prompt, language, voice_language)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         agent.id, agent.name, agent.personality, agent.body_color, 
-        agent.voice, agent.knowledge_base, agent.system_prompt
+        agent.voice, agent.knowledge_base, agent.system_prompt,
+        agent.language, agent.voice_language
       ]);
     }
   }

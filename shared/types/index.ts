@@ -7,6 +7,8 @@ export interface Agent {
   avatar_url?: string;
   knowledge_base?: string;
   system_prompt?: string;
+  language?: string;
+  voice_language?: string;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -43,7 +45,7 @@ export interface ApiResponse<T = any> {
   message?: string;
 }
 
-export const AVAILABLE_VOICES = [
+export const GEMINI_VOICES = [
   'Aoede',
   'Charon', 
   'Fenrir',
@@ -54,6 +56,23 @@ export const AVAILABLE_VOICES = [
   'Zephyr'
 ] as const;
 
+export const OPENAI_VOICES = [
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'sage',
+  'shimmer',
+  'verse',
+  'marin',
+  'cedar'
+] as const;
+
+export const AVAILABLE_VOICES = [...GEMINI_VOICES, ...OPENAI_VOICES] as const;
+
+export type GeminiVoiceType = typeof GEMINI_VOICES[number];
+export type OpenAIVoiceType = typeof OPENAI_VOICES[number];
 export type VoiceType = typeof AVAILABLE_VOICES[number];
 
 export const AGENT_COLORS = [
