@@ -4,8 +4,11 @@ const nextConfig = {
   swcMinify: false,
   generateEtags: false,
   poweredByHeader: false,
-  output: 'standalone',
+  output: 'export',
   trailingSlash: true,
+  images: {
+    unoptimized: true,
+  },
   
   webpack: (config, { dev, isServer }) => {
     if (dev && !isServer) {

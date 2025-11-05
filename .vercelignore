@@ -1,8 +1,6 @@
-# Ignore admin panel during Vercel deployment
+# Ignore admin panel during Vercel deployment  
 admin-panel/
 admin-panel/**
-**/admin-panel/**
-**/next.config.js
 
 # Ignore development files
 *.log
