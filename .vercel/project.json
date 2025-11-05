@@ -1,0 +1,11 @@
+{
+  "projectId": "sdh-global-ai-assistant",
+  "orgId": "team_zorojan",
+  "settings": {
+    "framework": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "installCommand": null,
+    "devCommand": null
+  }
+}
