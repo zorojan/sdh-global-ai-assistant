@@ -6,6 +6,31 @@ import axios from 'axios';
 
 const router = express.Router();
 
+// Armenian language system instructions
+const generateArmenianSystemPrompt = (basePrompt: string): string => {
+  const armenianInstructions = `
+
+ВАЖНО - ЯЗЫКОВЫЕ ИНСТРУКЦИИ:
+- Говори только на восточно-армянском языке (hy-AM)
+- Избегай переключения на английский язык в середине предложения (code-switching)  
+- Читай числа армянскими словами (например: "մեկ", "երկու", "երեք")
+- Делай паузы на армянских знаках препинания: \u0589 (верджакет) и \u055D (бют)
+- Используй правильную армянскую пунктуацию и грамматику
+- Отвечай естественно на армянском, как носитель языка
+
+LANGUAGE INSTRUCTIONS (Eastern Armenian):
+- Speak exclusively in Eastern Armenian (hy-AM)
+- Avoid English code-switching within sentences
+- Read numbers in Armenian words (e.g., "մեկ", "երկու", "երեք")
+- Pause at Armenian punctuation marks: \u0589 (full stop) and \u055D (comma)
+- Use proper Armenian grammar and punctuation
+- Respond naturally as a native Armenian speaker
+
+`;
+
+  return basePrompt + armenianInstructions;
+};
+
 // Get all agents
 router.get('/', async (req: any, res: express.Response) => {
   try {
@@ -216,8 +241,9 @@ router.post('/:id/message', async (req: any, res: express.Response) => {
     const apiKey = apiKeySetting.value;
     const model = modelSetting?.value || 'gemini-1.5-flash';
 
-    // Create system prompt
-    const systemPrompt = agent.system_prompt || `You are ${agent.name}. ${agent.personality}`;
+    // Create system prompt with Armenian language instructions
+    const baseSystemPrompt = agent.system_prompt || `You are ${agent.name}. ${agent.personality}`;
+    const systemPrompt = generateArmenianSystemPrompt(baseSystemPrompt);
 
     // Call Gemini API
     const geminiResponse = await axios.post(
@@ -325,8 +351,9 @@ router.post('/:id/chat', async (req: any, res: express.Response) => {
     const apiKey = apiKeySetting.value;
     const model = modelSetting?.value || 'gemini-1.5-flash';
 
-    // Create system prompt
-    const systemPrompt = agent.system_prompt || `You are ${agent.name}. ${agent.personality}`;
+    // Create system prompt with Armenian language instructions
+    const baseSystemPrompt = agent.system_prompt || `You are ${agent.name}. ${agent.personality}`;
+    const systemPrompt = generateArmenianSystemPrompt(baseSystemPrompt);
 
     // Build conversation contents from history with proper roles
     const contents = [
@@ -462,14 +489,17 @@ router.post('/chat', async (req: any, res: express.Response) => {
 
     console.log(`Processing chat for agent: ${agent.id} (${agent.name})`);
 
-    // Build system prompt
-    let systemPrompt = agent.personality || 'You are a helpful AI assistant.';
+    // Build system prompt with Armenian language instructions
+    let baseSystemPrompt = agent.personality || 'You are a helpful AI assistant.';
     if (agent.knowledge_base) {
-      systemPrompt += `\n\nKnowledge Base: ${agent.knowledge_base}`;
+      baseSystemPrompt += `\n\nKnowledge Base: ${agent.knowledge_base}`;
     }
     if (agent.system_prompt) {
-      systemPrompt += `\n\nAdditional Instructions: ${agent.system_prompt}`;
+      baseSystemPrompt += `\n\nAdditional Instructions: ${agent.system_prompt}`;
     }
+    
+    // Apply Armenian language instructions
+    const systemPrompt = generateArmenianSystemPrompt(baseSystemPrompt);
 
     // Prepare messages for Gemini
     const messages = [];
