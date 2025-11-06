@@ -6,6 +6,7 @@
  */
 
 import express, { Request, Response } from 'express';
+import WebSocket from 'ws';
 import { supabase } from '../database/supabase';
 
 const router = express.Router();
@@ -13,13 +14,14 @@ const router = express.Router();
 // Store active sessions keyed by sessionId
 interface GeminiLiveSession {
   sessionId: string;
-  googleWs: any; // WebSocket connection to Google API
-  clientWs: any; // Reference to client connection
+  googleWs: WebSocket | null; // WebSocket connection to Google API
+  clientWs: WebSocket | null; // Reference to client connection
   systemPrompt: string;
   model: string;
   ttsModel: string;
   agentId?: string;
   createdAt: number;
+  onMessageCallback?: (text: string, audio?: Uint8Array) => void;
 }
 
 const activeSessions = new Map<string, GeminiLiveSession>();
@@ -29,17 +31,12 @@ const activeSessions = new Map<string, GeminiLiveSession>();
  * Initialize a new Gemini Live session and establish WebSocket proxy
  * Body: { model, ttsModel, systemPrompt, agentId }
  * Returns: { sessionId, wsUrl }
- * 
- * Supported models:
- * - gemini-2.5-flash-native-audio-preview-09-2025 (Default, supports Armenian and other languages)
- * - gemini-live-2.5-flash-preview-native-audio-09-2025
- * - gemini-live-2.5-flash-preview
  */
 router.post('/setup', async (req: Request, res: Response) => {
   try {
     const { model, ttsModel, systemPrompt, agentId } = req.body;
 
-    console.log('🎙️ Gemini Live Proxy: Setting up new session');
+    console.log('??? Gemini Live Proxy: Setting up new session');
     console.log('   Model:', model);
     console.log('   TTS Model:', ttsModel);
     console.log('   Agent:', agentId);
@@ -52,7 +49,7 @@ router.post('/setup', async (req: Request, res: Response) => {
       .single();
 
     if (settingsError || !settingsData) {
-      console.error('🎙️ Gemini Live Proxy: API key not found');
+      console.error(' Gemini Live Proxy: API key not found');
       return res.status(500).json({ error: 'Gemini API key not configured' });
     }
 
@@ -60,13 +57,89 @@ router.post('/setup', async (req: Request, res: Response) => {
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const modelToUse = model || 'gemini-2.5-flash-native-audio-preview-09-2025';
 
-    console.log('🎙️ Gemini Live Proxy: Session ID:', sessionId);
-    console.log('🎙️ Gemini Live Proxy: Model:', modelToUse);
+    console.log('??? Gemini Live Proxy: Session ID:', sessionId);
+    console.log('??? Gemini Live Proxy: Model:', modelToUse);
+
+    // Create WebSocket connection to Google Gemini Live API
+    const googleWsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+    const googleWs = new WebSocket(googleWsUrl);
+
+    googleWs.onopen = () => {
+      console.log('??? Gemini Live Proxy: Connected to Google WebSocket');
+
+      // Send setup message
+      const setupMessage = {
+        setup: {
+          model: `models/${modelToUse}`,
+          generationConfig: {
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: 'Puck'
+                }
+              }
+            }
+          },
+          systemInstruction: {
+            parts: [
+              {
+                text: systemPrompt || 'You are a helpful AI assistant.'
+              }
+            ]
+          }
+        }
+      };
+
+      googleWs.send(JSON.stringify(setupMessage));
+      console.log(' Gemini Live Proxy: Setup message sent');
+    };
+
+    googleWs.onmessage = (event) => {
+      console.log('🎙️ Gemini Live Proxy: Received message from Google');
+
+      try {
+        const message = JSON.parse(event.data.toString());
+        console.log('🎙️ Gemini Live Proxy: Parsed message:', JSON.stringify(message, null, 2));
+
+        // Forward to client via callback if available
+        const session = activeSessions.get(sessionId);
+        if (session && session.onMessageCallback) {
+          let text = '';
+          let audio: Uint8Array | undefined;
+
+          if (message.serverContent?.modelTurn?.parts) {
+            for (const part of message.serverContent.modelTurn.parts) {
+              if (part.text) {
+                text += part.text;
+              }
+              if (part.inlineData?.mimeType?.includes('audio')) {
+                const base64 = part.inlineData.data;
+                audio = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+              }
+            }
+          }
+
+          if (text || audio) {
+            session.onMessageCallback(text, audio);
+          }
+        }
+      } catch (error) {
+        console.error('🎙️ Gemini Live Proxy: Failed to parse Google message:', error);
+      }
+    };
+
+    googleWs.onerror = (error) => {
+      console.error(' Gemini Live Proxy: Google WebSocket error:', error);
+    };
+
+    googleWs.onclose = (event) => {
+      console.log(' Gemini Live Proxy: Google WebSocket closed:', event.code, event.reason);
+    };
 
     // Create session object
     const session: GeminiLiveSession = {
       sessionId,
-      googleWs: null,
+      googleWs,
       clientWs: null,
       systemPrompt: systemPrompt || 'You are a helpful AI assistant.',
       model: modelToUse,
@@ -77,7 +150,7 @@ router.post('/setup', async (req: Request, res: Response) => {
 
     activeSessions.set(sessionId, session);
 
-    console.log('🎙️ Gemini Live Proxy: Session created successfully');
+    console.log(' Gemini Live Proxy: Session created successfully');
     console.log('   Active sessions:', activeSessions.size);
 
     res.json({
@@ -85,11 +158,11 @@ router.post('/setup', async (req: Request, res: Response) => {
       sessionId,
       model: modelToUse,
       ttsModel: ttsModel || 'gemini-2.5-flash',
-      endpoint: `wss://generativelanguage.googleapis.com/google.ai.generativelanguage.v1alpha.GenerativeService/BidiGenerateContent?key=${apiKey}`
+      endpoint: googleWsUrl
     });
 
   } catch (error) {
-    console.error('🎙️ Gemini Live Proxy: Setup error:', error);
+    console.error(' Gemini Live Proxy: Setup error:', error);
     res.status(500).json({
       error: 'Failed to setup session',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -106,7 +179,7 @@ router.post('/send', async (req: Request, res: Response) => {
   try {
     const { sessionId, audioBase64, contentType } = req.body;
 
-    console.log('🎙️ Gemini Live Proxy: Sending message');
+    console.log(' Gemini Live Proxy: Sending message');
     console.log('   Session ID:', sessionId);
     console.log('   Content type:', contentType);
     console.log('   Audio size:', audioBase64 ? Math.round(audioBase64.length / 1024) + 'KB' : 'none');
@@ -116,44 +189,9 @@ router.post('/send', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // Get API key
-    const { data: settingsData, error: settingsError } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'gemini_api_key')
-      .single();
-
-    if (settingsError || !settingsData) {
-      return res.status(500).json({ error: 'Gemini API key not configured' });
-    }
-
-    const apiKey = settingsData.value;
-
-    // Prepare client message for Gemini Live API
-    const clientMessage = {
-      setup: {
-        model: `models/${session.model}`,
-        generationConfig: {
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: 'Puck'
-              }
-            }
-          }
-        },
-        systemInstruction: {
-          parts: [
-            {
-              text: session.systemPrompt
-            }
-          ]
-        }
-      }
-    };
-
     if (audioBase64 && contentType === 'audio') {
-      Object.assign(clientMessage, {
+      // Send audio message to Google
+      const audioMessage = {
         clientContent: {
           turns: [
             {
@@ -169,75 +207,25 @@ router.post('/send', async (req: Request, res: Response) => {
           ],
           turnComplete: true
         }
-      });
-    }
+      };
 
-    // Call Gemini Live API using fetch (simulating WebSocket behavior)
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/google.ai.generativelanguage.v1alpha.GenerativeService/BidiGenerateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(clientMessage)
-      }
-    );
-
-    console.log('🎙️ Gemini Live Proxy: Google API response status:', response.status);
-
-    let result: any;
-    try {
-      const text = await response.text();
-      console.log('🎙️ Gemini Live Proxy: Response text length:', text.length);
-      
-      if (text && text.trim()) {
-        result = JSON.parse(text);
+      if (session.googleWs && session.googleWs.readyState === WebSocket.OPEN) {
+        session.googleWs.send(JSON.stringify(audioMessage));
+        console.log(' Gemini Live Proxy: Audio message sent to Google');
       } else {
-        result = { error: 'Empty response from Google API' };
-      }
-    } catch (parseError) {
-      console.error('🎙️ Gemini Live Proxy: Failed to parse response:', parseError);
-      result = { error: 'Failed to parse API response', parseError };
-    }
-
-    if (!response.ok) {
-      console.error('🎙️ Gemini Live Proxy: API error:', result);
-      return res.status(response.status).json({
-        error: result.error?.message || result.error || 'Gemini API error',
-        details: result.error,
-        status: response.status
-      });
-    }
-
-    console.log('🎙️ Gemini Live Proxy: Response received');
-
-    // Extract text and audio from response
-    let textResponse = '';
-    let audioResponse: string | null = null;
-
-    if (result.serverContent?.modelTurn?.parts) {
-      for (const part of result.serverContent.modelTurn.parts) {
-        if (part.text) {
-          textResponse += part.text;
-          console.log('🎙️ Gemini Live Proxy: Text response:', textResponse.substring(0, 100));
-        }
-        if (part.inlineData?.mimeType?.includes('audio')) {
-          audioResponse = part.inlineData.data;
-          console.log('🎙️ Gemini Live Proxy: Audio response received');
-        }
+        console.error(' Gemini Live Proxy: Google WebSocket not connected');
+        return res.status(500).json({ error: 'Google WebSocket not connected' });
       }
     }
 
+    // Response will come via WebSocket
     res.json({
       success: true,
-      text: textResponse || '(no response)',
-      audio: audioResponse || null,
-      timestamp: new Date().toISOString()
+      message: 'Audio sent successfully'
     });
 
   } catch (error) {
-    console.error('🎙️ Gemini Live Proxy: Send error:', error);
+    console.error(' Gemini Live Proxy: Send error:', error);
     res.status(500).json({
       error: 'Failed to send message',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -254,7 +242,7 @@ router.post('/cleanup', async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.body;
 
-    console.log('🎙️ Gemini Live Proxy: Cleaning up session:', sessionId);
+    console.log(' Gemini Live Proxy: Cleaning up session:', sessionId);
 
     const session = activeSessions.get(sessionId);
     if (session) {
@@ -267,7 +255,7 @@ router.post('/cleanup', async (req: Request, res: Response) => {
     res.json({ success: true });
 
   } catch (error) {
-    console.error('🎙️ Gemini Live Proxy: Cleanup error:', error);
+    console.error(' Gemini Live Proxy: Cleanup error:', error);
     res.status(500).json({ error: 'Failed to cleanup session' });
   }
 });
@@ -292,3 +280,4 @@ router.get('/status', (req: Request, res: Response) => {
 });
 
 export default router;
+export { activeSessions };

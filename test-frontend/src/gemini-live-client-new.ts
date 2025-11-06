@@ -11,6 +11,7 @@ export class GeminiLiveClient {
   private isRecording = false;
   private audioContext: AudioContext | null = null;
   private recordingStartTime = 0;
+  private ws: WebSocket | null = null;
 
   private model: string = 'gemini-2.5-flash-native-audio-preview-09-2025';
   private ttsModel: string = 'gemini-2.5-flash';
@@ -64,6 +65,44 @@ export class GeminiLiveClient {
       this.sessionId = setupData.sessionId;
       console.log('🎙️ Gemini Live: Session created:', this.sessionId);
       console.log('   Endpoint:', setupData.endpoint.substring(0, 80) + '...');
+
+      // Establish WebSocket connection for receiving responses
+      this.ws = new WebSocket(`ws://localhost:3001?sessionId=${this.sessionId}`);
+      
+      this.ws.onopen = () => {
+        console.log('🎙️ Gemini Live: WebSocket connected');
+      };
+      
+      this.ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'message') {
+            if (message.text && this.onMessageCallback) {
+              console.log('🎙️ Gemini Live: Text response:', message.text.substring(0, 100));
+              this.onMessageCallback(message.text);
+            }
+            if (message.audio && this.onAudioCallback) {
+              console.log('🎙️ Gemini Live: Audio response received');
+              const audioBytes = new Uint8Array(message.audio);
+              this.onAudioCallback(audioBytes);
+              this.playAudio(audioBytes);
+            }
+          }
+        } catch (error) {
+          console.error('🎙️ Gemini Live: Failed to parse WebSocket message:', error);
+        }
+      };
+      
+      this.ws.onerror = (error) => {
+        console.error('🎙️ Gemini Live: WebSocket error:', error);
+        if (this.onErrorCallback) {
+          this.onErrorCallback('WebSocket connection error');
+        }
+      };
+      
+      this.ws.onclose = () => {
+        console.log('🎙️ Gemini Live: WebSocket closed');
+      };
 
       this.isConnected = true;
     } catch (error) {
@@ -171,19 +210,8 @@ export class GeminiLiveClient {
         throw new Error(result.error || 'Failed to send audio');
       }
 
-      // Handle text response
-      if (result.text && this.onMessageCallback) {
-        console.log('🎙️ Gemini Live: Text response:', result.text.substring(0, 100));
-        this.onMessageCallback(result.text);
-      }
-
-      // Handle audio response
-      if (result.audio && this.onAudioCallback) {
-        console.log('🎙️ Gemini Live: Audio response received');
-        const audioBytes = this.base64ToUint8Array(result.audio);
-        this.onAudioCallback(audioBytes);
-        this.playAudio(audioBytes);
-      }
+      console.log('🎙️ Gemini Live: Audio chunk sent successfully');
+      // Responses will come via WebSocket
     } catch (error) {
       if (error instanceof Error && error.message.includes('Failed to send audio')) {
         // Silently handle audio send errors to avoid spam
@@ -258,6 +286,11 @@ export class GeminiLiveClient {
     console.log('🎙️ Gemini Live: Disconnecting...');
 
     this.stopRecording();
+
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
 
     if (this.sessionId) {
       try {

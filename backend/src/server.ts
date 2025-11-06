@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import WebSocket from 'ws';
 import { supabase, initSupabaseDatabase } from './database/supabase';
 import settingsRoutes from './routes/settings';
 import agentsRoutes from './routes/agents';
@@ -9,12 +10,63 @@ import authRoutes from './routes/auth';
 import realtimeRoutes from './routes/realtime';
 import validationRoutes from './routes/validation';
 import geminiAudioRoutes from './routes/gemini-audio';
-import geminiLiveProxyRoutes from './routes/gemini-live-proxy';
+import geminiLiveProxyRoutes, { activeSessions } from './routes/gemini-live-proxy';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Create HTTP server
+const server = require('http').createServer(app);
+
+// Create WebSocket server
+const wss = new WebSocket.Server({ server });
+
+// WebSocket connection handling for Gemini Live
+wss.on('connection', (ws: WebSocket, req) => {
+  const url = new URL(req.url || '', 'http://localhost');
+  const sessionId = url.searchParams.get('sessionId');
+
+  if (!sessionId) {
+    ws.close(1008, 'Session ID required');
+    return;
+  }
+
+  console.log('🎙️ WebSocket client connected for session:', sessionId);
+
+  const session = activeSessions.get(sessionId);
+  if (session) {
+    session.onMessageCallback = (text: string, audio?: Uint8Array) => {
+      ws.send(JSON.stringify({
+        type: 'message',
+        text,
+        audio: audio ? Array.from(audio) : null
+      }));
+    };
+  } else {
+    ws.close(1008, 'Session not found');
+    return;
+  }
+
+  ws.on('message', (data: Buffer) => {
+    try {
+      const message = JSON.parse(data.toString());
+      // Handle client messages if needed
+      console.log('🎙️ Received message from client:', message);
+    } catch (error) {
+      console.error('🎙️ Failed to parse client message:', error);
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('🎙️ WebSocket client disconnected for session:', sessionId);
+  });
+
+  ws.on('error', (error) => {
+    console.error('🎙️ WebSocket error for session:', sessionId, error);
+  });
+});
 
 // Middleware
 app.use(helmet());
@@ -187,10 +239,11 @@ app.use('*', (req, res) => {
 
 // Initialize database and start server
 initSupabaseDatabase().then(() => {
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
     console.log(`🗄️ Connected to Supabase database`);
+    console.log(`🔌 WebSocket server ready for Gemini Live`);
   });
 }).catch((error: any) => {
   console.error('Failed to initialize Supabase database:', error);
