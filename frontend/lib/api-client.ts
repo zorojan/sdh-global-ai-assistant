@@ -51,14 +51,16 @@ export const api = {
 
   // Get all settings
   getSettings: async (): Promise<Setting[]> => {
-    const response = await apiClient.get('/settings')
+    const response = await apiClient.get('/public/settings')
     return response.data
   },
 
   // Get specific setting
   getSetting: async (key: string): Promise<string> => {
-    const response = await apiClient.get(`/settings/${key}`)
-    return response.data.value
+    const response = await apiClient.get(`/public/settings`)
+    const settings = response.data as Setting[]
+    const setting = settings.find((s: Setting) => s.key === key)
+    return setting?.value || ''
   },
 
   // Health check

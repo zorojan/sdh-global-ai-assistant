@@ -23,6 +23,9 @@ export default function SettingsTab() {
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [validationStatus, setValidationStatus] = useState<ValidationStatus>({})
+  const [geminiModels, setGeminiModels] = useState<Array<{ value: string; label: string }>>([])
+  const [isLoadingGeminiModels, setIsLoadingGeminiModels] = useState<boolean>(false)
+  const [geminiModelsError, setGeminiModelsError] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const { data: settings = [], isLoading } = useQuery('settings', settingsAPI.getAll)
@@ -68,6 +71,47 @@ export default function SettingsTab() {
   }, {})
 
   const aiProvider = settings.find((s: Setting) => s.key === 'ai_provider')?.value || 'gemini'
+
+  // Load Gemini models list once to power model dropdowns
+  useEffect(() => {
+    const fetchModels = async () => {
+      setIsLoadingGeminiModels(true)
+      setGeminiModelsError(null)
+      try {
+        const res = await fetch('http://localhost:3001/api/test/gemini/models')
+        if (!res.ok) {
+          const text = await res.text()
+          throw new Error(`HTTP ${res.status}: ${text}`)
+        }
+        const json = await res.json()
+        const models = json?.data?.models || []
+
+        // Map to value/label and filter to text-capable chat models
+        const options: Array<{ value: string; label: string }> = models
+          .map((m: any) => {
+            const full: string = m?.name || '' // e.g., "models/gemini-1.5-flash-latest"
+            const value = full.includes('/') ? full.split('/').pop() as string : full
+            const label = (m?.displayName as string) || value
+            return { value, label }
+          })
+          .filter((opt: { value: string; label: string }) => opt.value && opt.value.startsWith('gemini-') && !opt.value.includes('embed'))
+
+        // De-duplicate and sort (optional: latest/pro first)
+        const dedupMap = new Map(options.map(o => [o.value, o]))
+        const dedup = Array.from(dedupMap.values())
+        dedup.sort((a, b) => a.value.localeCompare(b.value))
+
+        setGeminiModels(dedup)
+      } catch (err: any) {
+        console.error('Failed to fetch Gemini models:', err)
+        setGeminiModelsError(err?.message || 'Unknown error while listing Gemini models')
+      } finally {
+        setIsLoadingGeminiModels(false)
+      }
+    }
+
+    fetchModels()
+  }, [])
 
   // Helper function to determine if a setting should be visible based on current provider
   const shouldShowSetting = (settingKey: string, currentProvider: string): boolean => {
@@ -119,7 +163,7 @@ export default function SettingsTab() {
     }))
 
     try {
-      const endpoint = provider === 'gemini' ? '/api/gemini/test' : '/api/openai/test'
+      const endpoint = provider === 'gemini' ? '/api/test/gemini' : '/api/test/openai'
       const response = await fetch(`http://localhost:3001${endpoint}`)
       
       if (!response.ok) {
@@ -179,6 +223,13 @@ export default function SettingsTab() {
 
   const handleSelectChange = async (key: string, value: string) => {
     await updateMutation.mutateAsync({ key, value })
+    // Keep Gemini message dialog model and generic gemini_model in sync
+    if (key === 'message_dialog_model') {
+      try { await updateMutation.mutateAsync({ key: 'gemini_model', value }) } catch {}
+    }
+    if (key === 'gemini_model') {
+      try { await updateMutation.mutateAsync({ key: 'message_dialog_model', value }) } catch {}
+    }
     
     // Auto-validate after changing AI provider
     if (key === 'ai_provider') {
@@ -277,8 +328,8 @@ export default function SettingsTab() {
                       )}
                     </div>
                     
-                    {/* Select and Boolean fields - always show as selectors */}
-                    {setting.type === 'select' || setting.type === 'boolean' ? (
+                    {/* Select and Boolean fields - always show as selectors. Also force-select for specific keys. */}
+                    {(setting.type === 'select' || setting.type === 'boolean' || ['message_dialog_model','gemini_model'].includes(setting.key)) ? (
                       <div className="flex items-center">
                         {setting.type === 'select' && setting.key === 'ai_provider' ? (
                           <select
@@ -375,6 +426,27 @@ export default function SettingsTab() {
                           >
                             <option value="gemini-2.5-flash-tts">⚡ Gemini 2.5 Flash TTS (быстрый)</option>
                             <option value="gemini-2.5-pro-tts">💎 Gemini 2.5 Pro TTS (качественный)</option>
+                          </select>
+                        ) : setting.type === 'select' && (setting.key === 'message_dialog_model' || setting.key === 'gemini_model') ? (
+                          <select
+                            value={setting.value}
+                            onChange={(e) => handleSelectChange(setting.key, e.target.value)}
+                            disabled={updateMutation.isLoading || isLoadingGeminiModels}
+                            className="flex-1 form-select border border-gray-300 rounded-md px-3 py-2 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                          >
+                            {isLoadingGeminiModels && (
+                              <option value="">Загрузка моделей...</option>
+                            )}
+                            {!isLoadingGeminiModels && geminiModels.length === 0 && (
+                              <>
+                                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                              </>
+                            )}
+                            {geminiModels.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
                           </select>
                         ) : setting.type === 'select' && (setting.key.includes('model') || setting.key.includes('chat') || setting.key.includes('stt') || setting.key.includes('tts')) ? (
                           <select
@@ -490,6 +562,13 @@ export default function SettingsTab() {
                 
                 <p className="mt-1 text-xs text-gray-500">
                   Ключ: {setting.key} | Тип: {setting.type}
+                  {['message_dialog_model','gemini_model'].includes(setting.key) && (
+                    <>
+                      {' '}
+                      | Модели: {isLoadingGeminiModels ? 'загрузка…' : geminiModels.length}
+                      {geminiModelsError ? ` | Ошибка: ${geminiModelsError}` : ''}
+                    </>
+                  )}
                 </p>
               </div>
             )

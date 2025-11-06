@@ -12,14 +12,15 @@ interface Message {
 interface TextChatProps {
   agentId: string;
   agentName: string;
-  onSendMessage: (message: string, agentId: string) => Promise<string>;
+  onSendMessage: (message: string, agentId: string, provider?: string) => Promise<string>;
   currentProvider?: string;
 }
 
-export function TextChat({ agentId, agentName, onSendMessage, currentProvider = 'gemini' }: TextChatProps) {
+export function TextChat({ agentId, agentName, onSendMessage, currentProvider: initialProvider = 'gemini' }: TextChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<string>(initialProvider);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -47,7 +48,7 @@ export function TextChat({ agentId, agentName, onSendMessage, currentProvider = 
     setIsLoading(true);
 
     try {
-      const response = await onSendMessage(userMessage.text, agentId);
+      const response = await onSendMessage(userMessage.text, agentId, selectedProvider);
       
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -92,17 +93,27 @@ export function TextChat({ agentId, agentName, onSendMessage, currentProvider = 
       <div className="chat-header">
         <div className="flex items-center justify-between">
           <h3>💬 Chat with {agentName}</h3>
-          <div className="provider-indicator">
-            {currentProvider === 'gemini' && (
-              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                🔷 Gemini
-              </span>
-            )}
-            {currentProvider === 'openai' && (
-              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                🤖 OpenAI
-              </span>
-            )}
+          <div className="provider-selector flex gap-2">
+            <button
+              onClick={() => setSelectedProvider('gemini')}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                selectedProvider === 'gemini'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+              }`}
+            >
+              🔷 Gemini
+            </button>
+            <button
+              onClick={() => setSelectedProvider('openai')}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                selectedProvider === 'openai'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-green-100 text-green-800 hover:bg-green-200'
+              }`}
+            >
+              🤖 OpenAI
+            </button>
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import settingsRoutes from './routes/settings';
 import agentsRoutes from './routes/agents';
 import authRoutes from './routes/auth';
 import realtimeRoutes from './routes/realtime';
+import testRoutes from './routes/test';
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/test', testRoutes);
 
 // Public endpoint for API key (needed by frontend)
 app.get('/api/public/apikey', async (req, res) => {

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simple Chat</title>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 0; background: #0f172a; color: #e2e8f0; }
+      .container { max-width: 880px; margin: 24px auto; padding: 16px; }
+      .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; }
+      .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+      select, input, button { padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: #e2e8f0; }
+      button { background: #3b82f6; border: none; cursor: pointer; }
+      button:disabled { opacity: .6; cursor: not-allowed; }
+      .messages { height: 420px; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 8px; background:#0b1220; border:1px solid #1f2937; border-radius: 8px; }
+      .msg { max-width: 70%; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; line-height: 1.4; }
+      .me { margin-left: auto; background: #1d4ed8; }
+      .bot { margin-right: auto; background: #0f172a; border:1px solid #1f2937; }
+      .bad { color: #fecaca; }
+      .muted { color: #94a3b8; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

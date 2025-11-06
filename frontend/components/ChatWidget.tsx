@@ -211,7 +211,8 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
         },
         body: JSON.stringify({
           message: userMessage.text,
-          agentId: agent?.id || agentId || 'default'
+          agentId: agent?.id || agentId || 'default',
+          provider: aiProvider === 'openai' ? 'openai' : 'gemini'
         }),
       });
 

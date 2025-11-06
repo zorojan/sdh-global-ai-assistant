@@ -575,13 +575,24 @@ router.post('/:id/chat', async (req: any, res: express.Response) => {
 
 // Helper function for OpenAI chat
 async function callOpenAI(messages: any[], systemPrompt: string, apiKey: string) {
+  console.log('📥 callOpenAI() called');
+  console.log('   Messages count:', messages.length);
+  console.log('   System prompt length:', systemPrompt.length);
+  console.log('   API key present:', !!apiKey);
+  
   const openaiMessages = [
     { role: 'system', content: systemPrompt },
-    ...messages.map((msg: any) => ({
-      role: msg.role === 'model' ? 'assistant' : msg.role,
-      content: typeof msg.content === 'string' ? msg.content : msg.parts?.[0]?.text || ''
-    }))
+    ...messages.map((msg: any, index: number) => {
+      const content = typeof msg.content === 'string' ? msg.content : msg.parts?.[0]?.text || '';
+      console.log(`   Message ${index}: role=${msg.role}, contentLength=${content.length}`);
+      return {
+        role: msg.role === 'model' ? 'assistant' : msg.role,
+        content
+      };
+    })
   ];
+
+  console.log('📤 Sending to OpenAI:', JSON.stringify(openaiMessages, null, 2));
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -597,6 +608,8 @@ async function callOpenAI(messages: any[], systemPrompt: string, apiKey: string)
     })
   });
 
+  console.log('📡 Response status:', response.status, response.statusText);
+
   if (!response.ok) {
     const errorData = await response.text();
     console.error(`OpenAI API error: ${response.status} - ${errorData}`);
@@ -604,48 +617,106 @@ async function callOpenAI(messages: any[], systemPrompt: string, apiKey: string)
   }
 
   const data = await response.json() as any;
+  console.log('📨 OpenAI response data:', JSON.stringify(data, null, 2));
   return data.choices[0].message.content;
 }
 
 // Helper function for Gemini chat
-async function callGemini(messages: any[], apiKey: string) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+async function callGemini(
+  messages: any[],
+  systemPrompt: string,
+  apiKey: string,
+  model: string = 'gemini-1.5-flash-latest'
+) {
+  console.log('📥 callGemini() called');
+  console.log('   Messages count:', messages.length);
+  console.log('   System prompt length:', systemPrompt.length);
+  console.log('   API key present:', !!apiKey);
+  console.log('   Model:', model);
+  
+  let url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+  console.log('🌐 Gemini API URL:', url.replace(apiKey, 'API_KEY_HIDDEN'));
+  
+  // Gemini format: prepend system prompt to first user message
+  const geminiMessages = messages.map((msg: any, index: number) => {
+    const text = typeof msg.content === 'string' ? msg.content : msg.parts?.[0]?.text || '';
+    
+    console.log(`   Message ${index}: role=${msg.role}, textLength=${text.length}`);
+    
+    // Add system prompt to the first user message
+    if (index === 0 && msg.role === 'user') {
+      return {
+        role: 'user',
+        parts: [{ text: `${systemPrompt}\n\nUser: ${text}` }]
+      };
+    }
+    
+    return {
+      role: msg.role === 'assistant' ? 'model' : msg.role,
+      parts: [{ text }]
+    };
+  });
+  
+  console.log('📤 Sending to Gemini:', JSON.stringify(geminiMessages, null, 2));
+  
+  const requestBody = {
+    contents: geminiMessages,
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 2048,
+    },
+    safetySettings: [
+      {
+        category: "HARM_CATEGORY_HARASSMENT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      },
+      {
+        category: "HARM_CATEGORY_HATE_SPEECH",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      },
+      {
+        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      },
+      {
+        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      }
+    ]
+  };
+  
+  console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
+  
+  let response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      contents: messages,
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048,
-      },
-      safetySettings: [
-        {
-          category: "HARM_CATEGORY_HARASSMENT",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-          category: "HARM_CATEGORY_HATE_SPEECH",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
-        }
-      ]
-    }),
+    body: JSON.stringify(requestBody),
   });
+
+  console.log('📡 Response status:', response.status, response.statusText);
+
+  // If model ends with -latest and returned 404, retry without -latest as fallback
+  if (!response.ok && response.status === 404 && model.endsWith('-latest')) {
+    const fallbackModel = model.replace('-latest', '');
+    console.warn(`⚠️  Model ${model} returned 404. Retrying with fallback model: ${fallbackModel}`);
+  url = `https://generativelanguage.googleapis.com/v1/models/${fallbackModel}:generateContent?key=${apiKey}`;
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+    console.log('📡 Fallback response status:', response.status, response.statusText);
+  }
 
   if (!response.ok) {
     const errorData = await response.text();
-    console.error(`Gemini API error: ${response.status} - ${errorData}`);
+    console.error(`❌ Gemini API error: ${response.status} - ${errorData}`);
     throw new Error(`Gemini API error: ${response.status}`);
   }
 
@@ -715,7 +786,16 @@ router.post('/chat', async (req: any, res: express.Response) => {
     const aiProviderSetting = settings.find((s: any) => s.key === 'ai_provider');
     const activeProvider = provider || aiProviderSetting?.value || 'gemini';
 
-    console.log(`Using AI provider: ${activeProvider}`);
+    console.log('================================');
+    console.log('🔍 CHAT REQUEST DEBUG INFO');
+    console.log('================================');
+    console.log('📌 Request provider:', provider);
+    console.log('📌 Setting provider:', aiProviderSetting?.value);
+    console.log('📌 Active provider:', activeProvider);
+    console.log('📌 Agent ID:', agent.id);
+    console.log('📌 Agent name:', agent.name);
+    console.log('📌 Message:', message);
+    console.log('================================');
 
     // Prepare messages
     const messages = [];
@@ -741,18 +821,23 @@ router.post('/chat', async (req: any, res: express.Response) => {
     let assistantResponse: string;
 
     if (activeProvider === 'openai') {
+      console.log('🔵 Using OpenAI provider');
       // Use OpenAI
       const openaiApiKeySetting = settings.find((s: any) => s.key === 'openai_api_key');
       
       if (!openaiApiKeySetting || !openaiApiKeySetting.value) {
+        console.log('❌ OpenAI API key not found');
         return res.status(500).json({ 
           error: 'OpenAI API key is not configured. Please set up the OpenAI API key in the admin panel.' 
         });
       }
 
+      console.log('✓ OpenAI API key found');
+      console.log('📤 Calling OpenAI with', messages.length, 'messages');
+
       try {
         assistantResponse = await callOpenAI(messages, systemPrompt, openaiApiKeySetting.value);
-        console.log('✅ OpenAI response received');
+        console.log('✅ OpenAI response received:', assistantResponse.substring(0, 100) + '...');
       } catch (error: any) {
         console.error('❌ OpenAI API error:', error);
         return res.status(500).json({ 
@@ -760,27 +845,27 @@ router.post('/chat', async (req: any, res: express.Response) => {
         });
       }
     } else {
+      console.log('🟢 Using Gemini provider');
       // Use Gemini (default)
       const geminiApiKeySetting = settings.find((s: any) => s.key === 'gemini_api_key');
       
       if (!geminiApiKeySetting || !geminiApiKeySetting.value) {
+        console.log('❌ Gemini API key not found');
         return res.status(500).json({ 
           error: 'Gemini API key is not configured. Please set up the Gemini API key in the admin panel.' 
         });
       }
 
-      // Prepare Gemini format messages (with system prompt)
-      const geminiMessages = [
-        {
-          role: 'user',
-          parts: [{ text: `System: ${systemPrompt}` }]
-        },
-        ...messages
-      ];
+      console.log('✓ Gemini API key found');
+      console.log('📤 Calling Gemini with', messages.length, 'messages');
+
+      // Optional model from settings
+      const geminiModelSetting = settings.find((s: any) => s.key === 'gemini_model');
+      const geminiModel = geminiModelSetting?.value || 'gemini-1.5-flash-latest';
 
       try {
-        assistantResponse = await callGemini(geminiMessages, geminiApiKeySetting.value);
-        console.log('✅ Gemini response received');
+        assistantResponse = await callGemini(messages, systemPrompt, geminiApiKeySetting.value, geminiModel);
+        console.log('✅ Gemini response received:', assistantResponse.substring(0, 100) + '...');
       } catch (error: any) {
         console.error('❌ Gemini API error:', error);
         return res.status(500).json({ 

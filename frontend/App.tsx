@@ -141,8 +141,10 @@ function App() {
     }
   }, [apiKey, setAvailableAgents]);
 
-  const handleSendMessage = async (message: string, agentId: string) => {
-    return await api.sendMessage(agentId, message, aiProvider);
+  const handleSendMessage = async (message: string, agentId: string, provider?: string) => {
+    const activeProvider = provider || aiProvider;
+    console.log('📤 Sending message with provider:', activeProvider);
+    return await api.sendMessage(agentId, message, activeProvider);
   };
 
   // Show loading state while fetching API key

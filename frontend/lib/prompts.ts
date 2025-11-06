@@ -23,7 +23,7 @@ const getCompanyInfo = async (): Promise<CompanyInfo> => {
   }
 
   try {
-    const response = await fetch('/api/settings');
+    const response = await fetch('http://localhost:3001/api/public/settings');
     if (!response.ok) throw new Error('Failed to fetch settings');
     
     const settings = await response.json();
