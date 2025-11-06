@@ -9,6 +9,7 @@ import { LiveAPIProviderWidget, useLiveAPIContextWidget } from '../contexts/Live
 import { OpenAIRealtimeProvider, useOpenAIRealtimeContext } from '../contexts/OpenAIRealtimeContext';
 import BasicFaceWidget from './demo/basic-face/BasicFaceWidget';
 import BasicFace from './demo/basic-face/BasicFace';
+import SimpleOpenAIFace from './demo/openai-face/SimpleOpenAIFace';
 
 type VoiceProvider = 'gemini' | 'openai';
 
@@ -46,27 +47,26 @@ LANGUAGE INSTRUCTIONS:
   }
 }
 
-// Animated Face Component for OpenAI similar to Gemini's BasicFace
-const AnimatedOpenAIFace: React.FC<{ volume: number; isActive: boolean }> = ({ volume, isActive }) => {
+// Animated Face Component for OpenAI with proper volume integration
+const AnimatedOpenAIFace: React.FC<{ agent: any; isActive: boolean; volume?: number }> = ({ agent, isActive, volume = 0 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Determine animation class based on state
+  const getAnimationClass = () => {
+    if (volume > 0.1) return 'speaking';
+    if (isActive) return 'listening';
+    return '';
+  };
 
   return (
-    <div className="animated-face-container">
-      <canvas 
-        ref={canvasRef}
-        width={256} 
-        height={256}
-        className="animated-face-canvas"
-        style={{
-          background: 'transparent',
-          borderRadius: '50%',
-        }}
-      />
-      <BasicFace 
+    <div className={`animated-face-container ${getAnimationClass()}`}>
+      <SimpleOpenAIFace
         canvasRef={canvasRef}
-        isActive={isActive}
-        color="#00a67e"
         radius={128}
+        color={agent?.body_color || "#00a67e"}
+        avatarUrl={agent?.avatar_url}
+        isActive={isActive}
+        volume={volume}
       />
     </div>
   );
@@ -392,8 +392,9 @@ const OpenAIRealtimeChat: React.FC<{ agent: any; showAnimatedFace?: boolean }> =
       <div className="voice-face-container">
         {showAnimatedFace ? (
           <AnimatedOpenAIFace 
+            agent={agent}
+            isActive={connected}
             volume={volume}
-            isActive={connected && volume > 0}
           />
         ) : (
           <SimpleFaceWidget

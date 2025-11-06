@@ -212,7 +212,7 @@ function App() {
                         apiUrl={API_BASE_URL}
                         initialProvider={aiProvider === 'openai' ? 'openai' : 'gemini'}
                         allowProviderSelection={aiProvider === 'hybrid'}
-                        showAnimatedFace={false}
+                        showAnimatedFace={true}
                       />
                     </div>
                   )

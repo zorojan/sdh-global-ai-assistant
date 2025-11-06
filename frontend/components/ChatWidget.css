@@ -1193,3 +1193,60 @@
     min-width: unset;
   }
 }
+
+/* OpenAI Animated Face Styles */
+.animated-face-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 20px 0;
+  background: radial-gradient(circle, rgba(0, 166, 126, 0.1) 0%, transparent 70%);
+  border-radius: 50%;
+  padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.animated-face-container:hover {
+  background: radial-gradient(circle, rgba(0, 166, 126, 0.15) 0%, transparent 70%);
+  transform: scale(1.02);
+}
+
+.animated-face-canvas {
+  border-radius: 50%;
+  box-shadow: 0 4px 20px rgba(0, 166, 126, 0.2);
+  transition: box-shadow 0.3s ease;
+}
+
+.openai-face {
+  filter: drop-shadow(0 2px 8px rgba(0, 166, 126, 0.3));
+}
+
+/* OpenAI Face Animation States */
+.animated-face-container.listening {
+  background: radial-gradient(circle, rgba(0, 166, 126, 0.2) 0%, transparent 70%);
+  animation: pulse-openai 2s ease-in-out infinite;
+}
+
+.animated-face-container.speaking {
+  animation: glow-openai 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse-openai {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(0, 166, 126, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 10px rgba(0, 166, 126, 0);
+  }
+}
+
+@keyframes glow-openai {
+  0% {
+    filter: drop-shadow(0 2px 8px rgba(0, 166, 126, 0.3));
+  }
+  100% {
+    filter: drop-shadow(0 4px 16px rgba(0, 166, 126, 0.6));
+  }
+}

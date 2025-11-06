@@ -135,30 +135,32 @@ Language: Please respond primarily in ${selectedLanguage.split('-')[0]}. Always 
 WELCOME MESSAGE: When the conversation starts, immediately greet the user warmly. Say something like: "Hello! I'm ${agentData?.name || 'your AI assistant'} from ${companyInfo.company_name || 'SDH Global'}. How can I help you today?"`;
     }
 
-    // Create FormData per OpenAI WebRTC documentation
-    const FormData = require('form-data');
-    const fd = new FormData();
-    fd.append('sdp', offerSdp);
-    
     // Session configuration with dynamic voice, language, and company context
-    const sessionConfig = JSON.stringify({
-      type: "realtime",
+    const sessionConfig = {
       model: "gpt-4o-realtime-preview",
-      audio: { 
-        output: { voice: selectedVoice }
-      },
-      instructions: instructions
-    });
-    fd.append('session', sessionConfig);
+      voice: selectedVoice,
+      instructions: instructions,
+      input_audio_transcription: {
+        model: "whisper-1"
+      }
+    };
 
-    // Forward SDP to OpenAI Realtime API using correct endpoint
+    console.log('📡 Session config:', JSON.stringify(sessionConfig, null, 2));
+
+    // Create JSON request body per OpenAI Realtime API documentation
+    const requestBody = {
+      sdp: offerSdp,
+      session: sessionConfig
+    };
+
+    // Forward SDP to OpenAI Realtime API using correct JSON format
     const openaiResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        ...fd.getHeaders()
+        'Content-Type': 'application/json'
       },
-      body: fd
+      body: JSON.stringify(requestBody)
     });
 
     if (!openaiResponse.ok) {
@@ -169,10 +171,23 @@ WELCOME MESSAGE: When the conversation starts, immediately greet the user warmly
       });
     }
 
-    // Return SDP answer from OpenAI
-    const answerSdp = await openaiResponse.text();
+    // Parse JSON response from OpenAI
+    const responseData = await openaiResponse.json() as any;
+    console.log('✅ OpenAI Realtime response received:', {
+      hasCallId: !!responseData.call_id,
+      hasSdp: !!responseData.sdp,
+      sdpLength: responseData.sdp?.length
+    });
     
-    console.log('✅ SDP answer received from OpenAI, forwarding to client');
+    // Extract SDP answer - try both possible field names from documentation
+    const answerSdp = responseData.sdp || responseData.sdp_answer;
+    
+    if (!answerSdp) {
+      console.error('❌ No SDP answer in OpenAI response:', responseData);
+      return res.status(500).json({ error: 'No SDP answer received from OpenAI' });
+    }
+    
+    console.log('✅ SDP answer forwarded to client, length:', answerSdp.length);
     
     res.setHeader('Content-Type', 'application/sdp');
     res.send(answerSdp);

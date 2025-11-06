@@ -4,6 +4,35 @@ import { authenticateToken } from './auth';
 
 const router = express.Router();
 
+// Public endpoint to get API keys for frontend (no auth required)
+router.get('/api-keys', async (req: any, res: express.Response) => {
+  try {
+    const { data: settings, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['gemini_api_key', 'openai_api_key']);
+
+    if (error) {
+      throw error;
+    }
+
+    // Return only API keys in a safe format
+    const apiKeys: any = {};
+    settings.forEach((setting: any) => {
+      if (setting.key === 'gemini_api_key') {
+        apiKeys.gemini = setting.value || '';
+      } else if (setting.key === 'openai_api_key') {
+        apiKeys.openai = setting.value || '';
+      }
+    });
+
+    res.json(apiKeys);
+  } catch (error) {
+    console.error('Get API keys error:', error);
+    res.status(500).json({ error: 'Failed to fetch API keys' });
+  }
+});
+
 // Get all settings
 router.get('/', authenticateToken, async (req: any, res: express.Response) => {
   try {

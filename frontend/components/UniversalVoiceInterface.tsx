@@ -52,6 +52,7 @@ export default function UniversalVoiceInterface({
           apiUrl={apiUrl}
           initialProvider="openai"
           allowProviderSelection={allowProviderSelection}
+          showAnimatedFace={true}
         />
       </div>
     </div>

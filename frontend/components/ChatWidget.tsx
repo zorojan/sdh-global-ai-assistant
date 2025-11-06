@@ -373,6 +373,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
                 apiUrl={apiUrl} 
                 initialProvider={(aiProvider === 'openai') ? 'openai' : 'gemini'} 
                 allowProviderSelection={aiProvider === 'hybrid'}
+                showAnimatedFace={true}
               />
             ) : (
               <div className="voice-error">
