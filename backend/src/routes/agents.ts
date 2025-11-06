@@ -284,8 +284,10 @@ Company Context:
 - Company Name: ${companyInfo.company_name}
 - Company Description: ${companyInfo.company_description}
 - Website: ${companyInfo.company_website}
+- Company Documents/Address Info: ${companyInfo.company_documents}
 
-You are representing ${companyInfo.company_name}. Be helpful, professional, and knowledgeable about the company's services.`;
+You are representing ${companyInfo.company_name}. Be helpful, professional, and knowledgeable about the company's services. 
+IMPORTANT: Always use the exact information provided in the Company Context above, especially for addresses, contact information, and official details. Do not make up or guess any information about the company.`;
 
     console.log('🤖 Chat request details:', {
       message: message.substring(0, 100) + '...',
@@ -294,6 +296,13 @@ You are representing ${companyInfo.company_name}. Be helpful, professional, and 
       model,
       companyName: companyInfo.company_name,
       hasApiKey: !!apiKeySetting.value
+    });
+
+    console.log('🏢 Company information being sent to Gemini:', {
+      name: companyInfo.company_name,
+      website: companyInfo.company_website,
+      documentsPreview: companyInfo.company_documents?.substring(0, 200) + '...',
+      descriptionLength: companyInfo.company_description?.length || 0
     });
 
     try {
