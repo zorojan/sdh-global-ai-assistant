@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { GeminiLiveClient } from './gemini-live-client'
-import { OpenAIRealtimeClient } from './openai-realtime-client'
+import { GeminiLiveClient } from './gemini-live-client-simple'
+import { OpenAIRealtimeClient } from './openai-realtime-client-simple'
+import './App.css'
 
 type Provider = 'gemini' | 'openai'
 type Mode = 'chat' | 'audio'
@@ -19,6 +20,35 @@ interface Agent {
   language: string
   voice: string
   body_color?: string
+  system_prompt?: string
+  voice_language?: string
+  knowledge_base?: string
+}
+
+interface DiagnosticsData {
+  // Models
+  gemini_model?: string
+  message_dialog_model?: string
+  default_model?: string
+  openai_model?: string
+  
+  // Languages
+  default_language?: string
+  gemini_default_language?: string
+  realtime_language?: string
+  openai_chat_language?: string
+  
+  // Company info
+  company_name?: string
+  company_description?: string
+  company_website?: string
+  company_documents?: string
+  
+  // AI Provider
+  ai_provider?: string
+  
+  // Current agent data
+  current_agent?: Agent
 }
 
 const API_URL = 'http://localhost:3001'
@@ -32,6 +62,9 @@ function App() {
   const [isListening, setIsListening] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsData>({})
+  const [showDiagnostics, setShowDiagnostics] = useState(true)
 
   // Audio clients
   const geminiClientRef = useRef<GeminiLiveClient | null>(null)
@@ -45,19 +78,54 @@ function App() {
   useEffect(() => {
     loadAgents()
     loadApiKeys()
+    loadDiagnosticsData()
   }, [])
+
+  // Update diagnostics when agent or provider changes
+  useEffect(() => {
+    updateCurrentDiagnostics()
+  }, [selectedAgent, provider, mode])
 
   const loadAgents = async () => {
     try {
       const response = await fetch(`${API_URL}/api/agents`)
       if (response.ok) {
         const agentsData = await response.json()
+        setAgents(agentsData)
         if (agentsData.length > 0) {
           setSelectedAgent(agentsData[0])
         }
       }
     } catch (error) {
       console.error('Failed to load agents:', error)
+    }
+  }
+
+  const loadDiagnosticsData = async () => {
+    try {
+      console.log('🔍 Loading diagnostics data...')
+      
+      // Load all settings via the new public endpoint
+      const response = await fetch(`${API_URL}/api/settings/diagnostics`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('📊 Diagnostics data loaded:', data)
+        setDiagnostics(data)
+      } else {
+        console.warn('Diagnostics endpoint not available, using limited data')
+      }
+    } catch (error) {
+      console.error('Failed to load diagnostics:', error)
+    }
+  }
+
+  const updateCurrentDiagnostics = () => {
+    if (selectedAgent) {
+      setDiagnostics(prev => ({
+        ...prev,
+        current_agent: selectedAgent
+      }))
     }
   }
 
@@ -207,7 +275,7 @@ function App() {
           setError(`OpenAI Realtime: ${error}`)
         })
         
-        await openaiClientRef.current.connect(selectedAgent)
+        await openaiClientRef.current.connect()
         await openaiClientRef.current.startRecording()
       }
       
@@ -272,6 +340,7 @@ function App() {
   }
 
   return (
+
     <div className="container">
       <h1>🤖 SDH AI Test - Gemini & OpenAI</h1>
       
@@ -313,7 +382,31 @@ function App() {
         </button>
       </div>
 
-      {/* Agent Selection */}
+      {/* Agent Selector */}
+      <div className="agent-selector" style={{ marginBottom: 12 }}>
+        <label htmlFor="agent-select" style={{ marginRight: 8, fontWeight: 500 }}>Agent:</label>
+        <select
+          id="agent-select"
+          value={selectedAgent?.id || ''}
+          onChange={e => {
+            const agentId = e.target.value;
+            setSelectedAgent(prev => agents.find((a: Agent) => a.id === agentId) || prev);
+          }}
+          style={{ padding: '6px 12px', borderRadius: 6, fontSize: 14 }}
+        >
+          {agents && agents.length > 0 ? (
+            agents.map((agent: Agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name} ({agent.language})
+              </option>
+            ))
+          ) : (
+            <option value="">No agents</option>
+          )}
+        </select>
+      </div>
+
+      {/* Current Agent Status */}
       {selectedAgent && (
         <div className="status">
           Current Agent: <strong>{selectedAgent.name}</strong> 
@@ -408,7 +501,161 @@ function App() {
         >
           🗑️ Clear Messages
         </button>
+        <button 
+          onClick={() => setShowDiagnostics(!showDiagnostics)}
+          className="mode-button"
+          style={{ flex: 1 }}
+        >
+          {showDiagnostics ? '🔍 Hide Debug' : '🔍 Show Debug'}
+        </button>
       </div>
+
+      {/* Diagnostics Panel */}
+      {showDiagnostics && (
+        <div className="diagnostics-panel">
+          <h3>🔍 Debug Info - Current Configuration</h3>
+          
+          <div className="diagnostics-grid">
+            {/* Current Context */}
+            <div className="diagnostics-section">
+              <h4>📋 Current Context</h4>
+              <div className="diagnostics-item">
+                <strong>AI Provider:</strong> {provider} ({diagnostics.ai_provider || 'unknown'})
+              </div>
+              <div className="diagnostics-item">
+                <strong>Mode:</strong> {mode}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Agent:</strong> {selectedAgent?.name || 'none'} ({selectedAgent?.id || 'none'})
+              </div>
+            </div>
+
+            {/* Models Configuration */}
+            <div className="diagnostics-section">
+              <h4>🤖 Models</h4>
+              <div className="diagnostics-item">
+                <strong>Chat Model ({provider}):</strong> {
+                  provider === 'gemini' 
+                    ? (diagnostics.message_dialog_model || diagnostics.gemini_model || 'default')
+                    : (diagnostics.openai_model || 'default')
+                }
+              </div>
+              <div className="diagnostics-item">
+                <strong>Audio Model ({provider}):</strong> {
+                  provider === 'gemini' 
+                    ? (diagnostics.default_model || 'gemini-2.5-flash-preview-native-audio-dialog')
+                    : (diagnostics.openai_model || 'gpt-4o-realtime-preview')
+                }
+              </div>
+              <div className="diagnostics-item">
+                <strong>All Models:</strong>
+                <ul style={{fontSize: '11px', margin: '2px 0', paddingLeft: '15px'}}>
+                  {diagnostics.gemini_model && <li>Gemini: {diagnostics.gemini_model}</li>}
+                  {diagnostics.message_dialog_model && <li>Dialog: {diagnostics.message_dialog_model}</li>}
+                  {diagnostics.default_model && <li>Default: {diagnostics.default_model}</li>}
+                  {diagnostics.openai_model && <li>OpenAI: {diagnostics.openai_model}</li>}
+                </ul>
+              </div>
+            </div>
+
+            {/* Language Configuration */}
+            <div className="diagnostics-section">
+              <h4>🌐 Languages</h4>
+              <div className="diagnostics-item">
+                <strong>Agent Language:</strong> {selectedAgent?.language || 'none'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Agent Voice Language:</strong> {selectedAgent?.voice_language || 'none'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Provider Language ({provider}):</strong> {
+                  provider === 'gemini' 
+                    ? (diagnostics.gemini_default_language || 'default')
+                    : (mode === 'audio' ? diagnostics.realtime_language : diagnostics.openai_chat_language || 'default')
+                }
+              </div>
+              <div className="diagnostics-item">
+                <strong>Global Default:</strong> {diagnostics.default_language || 'auto'}
+              </div>
+            </div>
+
+            {/* Agent Configuration */}
+            <div className="diagnostics-section">
+              <h4>🤖 Agent Details</h4>
+              <div className="diagnostics-item">
+                <strong>Voice:</strong> {selectedAgent?.voice || 'none'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Body Color:</strong> {selectedAgent?.body_color || 'none'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Personality:</strong> 
+                <div style={{fontSize: '11px', maxHeight: '60px', overflow: 'auto', background: 'rgba(0,0,0,0.1)', padding: '4px', borderRadius: '4px', margin: '2px 0'}}>
+                  {selectedAgent?.personality || 'none'}
+                </div>
+              </div>
+              <div className="diagnostics-item">
+                <strong>System Prompt:</strong> 
+                <div style={{fontSize: '11px', maxHeight: '60px', overflow: 'auto', background: 'rgba(0,0,0,0.1)', padding: '4px', borderRadius: '4px', margin: '2px 0'}}>
+                  {selectedAgent?.system_prompt || 'none'}
+                </div>
+              </div>
+            </div>
+
+            {/* Company Configuration */}
+            <div className="diagnostics-section">
+              <h4>🏢 Company Context</h4>
+              <div className="diagnostics-item">
+                <strong>Name:</strong> {diagnostics.company_name || 'none'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Website:</strong> {diagnostics.company_website || 'none'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Description:</strong> 
+                <div style={{fontSize: '11px', maxHeight: '40px', overflow: 'auto', background: 'rgba(0,0,0,0.1)', padding: '4px', borderRadius: '4px', margin: '2px 0'}}>
+                  {diagnostics.company_description || 'none'}
+                </div>
+              </div>
+              <div className="diagnostics-item">
+                <strong>Documents Preview:</strong> 
+                <div style={{fontSize: '11px', maxHeight: '40px', overflow: 'auto', background: 'rgba(0,0,0,0.1)', padding: '4px', borderRadius: '4px', margin: '2px 0'}}>
+                  {diagnostics.company_documents ? 
+                    diagnostics.company_documents.substring(0, 200) + '...' : 'none'}
+                </div>
+              </div>
+            </div>
+
+            {/* API Status */}
+            <div className="diagnostics-section">
+              <h4>🔑 API Status</h4>
+              <div className="diagnostics-item">
+                <strong>Gemini Key:</strong> {apiKeys.gemini ? '✅ Configured' : '❌ Missing'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>OpenAI Key:</strong> {apiKeys.openai ? '✅ Configured' : '❌ Missing'}
+              </div>
+              <div className="diagnostics-item">
+                <strong>Active Provider:</strong> {
+                  (provider === 'gemini' && apiKeys.gemini) || 
+                  (provider === 'openai' && apiKeys.openai) 
+                    ? '✅ Ready' : '❌ Not Ready'
+                }
+              </div>
+            </div>
+          </div>
+
+          <div className="diagnostics-actions">
+            <button 
+              onClick={loadDiagnosticsData}
+              className="mode-button"
+              style={{ fontSize: '12px', padding: '8px 12px' }}
+            >
+              🔄 Refresh Data
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

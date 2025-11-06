@@ -33,6 +33,44 @@ router.get('/api-keys', async (req: any, res: express.Response) => {
   }
 });
 
+// Public endpoint for diagnostics data (no auth required, no sensitive data)
+router.get('/diagnostics', async (req: any, res: express.Response) => {
+  try {
+    console.log('📊 Fetching diagnostics data...');
+    
+    // Get all settings first
+    const { data: allSettings, error: allError } = await supabase
+      .from('settings')
+      .select('key, value');
+
+    if (allError) {
+      console.error('Error fetching all settings:', allError);
+      throw allError;
+    }
+
+    console.log('📦 Found settings:', allSettings?.length || 0);
+
+    // Filter out sensitive data
+    const sensitiveKeys = ['gemini_api_key', 'openai_api_key', 'admin_password'];
+    const settings = allSettings?.filter(setting => !sensitiveKeys.includes(setting.key)) || [];
+
+    console.log('🔒 Filtered to safe settings:', settings.length);
+
+    // Convert to diagnostics format
+    const diagnosticsData: any = {};
+    
+    settings.forEach((setting: any) => {
+      diagnosticsData[setting.key] = setting.value;
+    });
+
+    console.log('✅ Diagnostics data prepared:', Object.keys(diagnosticsData));
+    res.json(diagnosticsData);
+  } catch (error) {
+    console.error('❌ Get diagnostics error:', error);
+    res.status(500).json({ error: 'Failed to fetch diagnostics data' });
+  }
+});
+
 // Get all settings
 router.get('/', authenticateToken, async (req: any, res: express.Response) => {
   try {
