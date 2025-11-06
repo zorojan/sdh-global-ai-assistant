@@ -344,22 +344,47 @@ You are representing ${companyInfo.company_name}. Be helpful, professional, and 
         })
       });
 
+      console.log('📊 Gemini API response status:', geminiResponse.status, geminiResponse.statusText);
+
       if (!geminiResponse.ok) {
         const errorText = await geminiResponse.text();
-        console.error('Gemini API error:', errorText);
+        console.error('❌ Gemini API error response:', errorText);
+        console.error('🔍 Request details:', { model, url: geminiUrl.replace(apiKeySetting.value, 'API_KEY_HIDDEN') });
         throw new Error(`Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`);
       }
 
       const geminiData = await geminiResponse.json() as any;
+      console.log('✅ Gemini API response received:', {
+        candidatesCount: geminiData.candidates?.length || 0,
+        hasContent: !!(geminiData.candidates?.[0]?.content),
+        finishReason: geminiData.candidates?.[0]?.finishReason
+      });
       
       // Extract the response text from Gemini's response
       let response = 'Sorry, I could not generate a response.';
       
       if (geminiData.candidates && geminiData.candidates.length > 0) {
         const candidate = geminiData.candidates[0];
+        console.log('🔍 Processing candidate:', {
+          hasContent: !!candidate.content,
+          hasParts: !!(candidate.content?.parts),
+          partsCount: candidate.content?.parts?.length || 0,
+          finishReason: candidate.finishReason,
+          safetyRatings: candidate.safetyRatings?.length || 0
+        });
+        
         if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
           response = candidate.content.parts[0].text;
+          console.log('✅ Extracted response:', response.substring(0, 200) + '...');
+        } else {
+          console.log('❌ No content parts found in candidate');
+          if (candidate.finishReason) {
+            console.log('🛑 Finish reason:', candidate.finishReason);
+          }
         }
+      } else {
+        console.log('❌ No candidates found in Gemini response');
+        console.log('🔍 Full Gemini response:', JSON.stringify(geminiData, null, 2));
       }
 
       res.json({ 

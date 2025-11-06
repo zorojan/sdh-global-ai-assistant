@@ -387,9 +387,11 @@ export default function SettingsTab() {
                             {setting.key.includes('gemini') || setting.key === 'default_model' || setting.key === 'message_dialog_model' ? (
                               <>
                                 <option value="gemini-2.0-flash-live-001">🎤 Gemini 2.0 Flash Live</option>
-                                <option value="gemini-2.5-flash-native-audio-preview-09-2025">� Gemini 2.5 Native Audio (Preview)</option>
+                                <option value="gemini-2.5-flash-preview-native-audio-dialog">🎙️ Gemini 2.5 Flash Audio Dialog</option>
+                                <option value="gemini-2.5-flash-native-audio-preview-09-2025">🔊 Gemini 2.5 Native Audio (Preview)</option>
                                 <option value="gemini-1.5-flash">⚡ Gemini 1.5 Flash</option>
                                 <option value="gemini-1.5-pro">💎 Gemini 1.5 Pro</option>
+                                <option value="gemini-2.5-flash">✨ Gemini 2.5 Flash</option>
                               </>
                             ) : null}
                             
