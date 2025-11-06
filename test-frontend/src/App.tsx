@@ -1,7 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { GeminiLiveClient } from './gemini-live-client-simple'
-import { OpenAIRealtimeClient } from './openai-realtime-client-simple'
-import './App.css'
+
+
+import React, { useState, useRef, useEffect } from 'react';
+import { GeminiLiveClient } from './gemini-live-client-simple';
+import { OpenAIRealtimeClient } from './openai-realtime-client-simple';
+import './App.css';
+
+// Тип для лога AI-запроса
+interface AIRequestLog {
+  timestamp: number;
+  provider: string;
+  mode: string;
+  model: string;
+  endpoint: string;
+  prompt: string;
+  params?: any;
+  response?: string;
+}
 
 type Provider = 'gemini' | 'openai'
 type Mode = 'chat' | 'audio'
@@ -54,6 +68,8 @@ interface DiagnosticsData {
 const API_URL = 'http://localhost:3001'
 
 function App() {
+  const [aiRequestLogs, setAIRequestLogs] = useState<AIRequestLog[]>([]);
+  const [initialSessionLogs, setInitialSessionLogs] = useState<AIRequestLog[]>([]);
   const [provider, setProvider] = useState<Provider>('gemini')
   const [mode, setMode] = useState<Mode>('chat')
   const [messages, setMessages] = useState<Message[]>([])
@@ -160,6 +176,30 @@ function App() {
     }
   }
 
+  // Логируем initial payload при смене режима или агента
+  useEffect(() => {
+    if (!selectedAgent) return;
+    const chatModel = provider === 'gemini'
+      ? (diagnostics.message_dialog_model || diagnostics.gemini_model || 'default')
+      : (diagnostics.openai_model || 'default');
+    const systemPrompt = selectedAgent?.system_prompt || '';
+    const logEntry: AIRequestLog = {
+      timestamp: Date.now(),
+      provider,
+      mode,
+      model: chatModel,
+      endpoint: provider === 'gemini' ? (mode === 'chat' ? 'Gemini Chat' : 'Gemini Audio') : (mode === 'chat' ? 'OpenAI Chat' : 'OpenAI Audio'),
+      prompt: systemPrompt,
+      params: {
+        agentId: selectedAgent?.id,
+        agentName: selectedAgent?.name,
+        language: selectedAgent?.language,
+        model: chatModel
+      }
+    };
+    setInitialSessionLogs(prev => [logEntry, ...prev.slice(0, 9)]);
+  }, [provider, mode, selectedAgent]);
+
   const sendChatMessage = async (message: string) => {
     if (!message.trim()) return
 
@@ -174,6 +214,27 @@ function App() {
       timestamp: Date.now()
     }
     setMessages(prev => [...prev, userMessage])
+
+    // Формируем лог запроса
+    const chatModel = provider === 'gemini'
+      ? (diagnostics.message_dialog_model || diagnostics.gemini_model || 'default')
+      : (diagnostics.openai_model || 'default')
+    const systemPrompt = selectedAgent?.system_prompt || ''
+    const fullPrompt = `${systemPrompt}\nUser: ${message}`
+    const logEntry: AIRequestLog = {
+      timestamp: Date.now(),
+      provider,
+      mode: 'chat',
+      model: chatModel,
+      endpoint: provider === 'gemini' ? 'Gemini Chat' : 'OpenAI Chat',
+      prompt: fullPrompt,
+      params: {
+        agentId: selectedAgent?.id,
+        agentName: selectedAgent?.name,
+        language: selectedAgent?.language,
+        model: chatModel
+      }
+    }
 
     try {
       const response = await fetch(`${API_URL}/api/agents/chat`, {
@@ -196,14 +257,23 @@ function App() {
           timestamp: Date.now()
         }
         setMessages(prev => [...prev, aiMessage])
+        // Добавляем лог с ответом
+        setAIRequestLogs(prev => [
+          {
+            ...logEntry,
+            response: data.response
+          },
+          ...prev.slice(0, 9)
+        ])
       } else {
+        setAIRequestLogs(prev => [logEntry, ...prev.slice(0, 9)])
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
     } catch (error) {
       console.error('Chat error:', error)
       setError(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
-      setIsLoading(false)
+  setIsLoading(false)
     }
   }
 
@@ -489,6 +559,47 @@ function App() {
           >
             {isListening ? '🔴 Stop Recording' : '🎤 Start Voice Chat'}
           </button>
+        </div>
+      )}
+
+      {/* Initial Session Log */}
+      {initialSessionLogs.length > 0 && (
+        <div className="ai-request-log" style={{margin: '18px 0', background: '#e8f0ff', border: '1px solid #7da0d0', borderRadius: 8, padding: 12}}>
+          <h3 style={{margin: '0 0 8px 0', fontSize: 15}}>🟦 Initial Session Log (last 10)</h3>
+          {initialSessionLogs.map((log, idx) => (
+            <div key={log.timestamp + '-' + idx} style={{marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #eee'}}>
+              <div style={{fontSize: 12, color: '#336'}}>
+                [{new Date(log.timestamp).toLocaleTimeString()}] {log.provider.toUpperCase()} / {log.mode} / <b>{log.model}</b>
+              </div>
+              <div style={{fontSize: 12}}><b>Endpoint:</b> {log.endpoint}</div>
+              <div style={{fontSize: 12}}><b>Initial System Prompt:</b> <span style={{color:'#333'}}>{log.prompt}</span></div>
+              {log.params && (
+                <div style={{fontSize: 12}}><b>Params:</b> {JSON.stringify(log.params)}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* AI Request Log */}
+      {aiRequestLogs.length > 0 && (
+        <div className="ai-request-log" style={{margin: '18px 0', background: '#f6f6f6', border: '1px solid #ccc', borderRadius: 8, padding: 12}}>
+          <h3 style={{margin: '0 0 8px 0', fontSize: 15}}>📝 AI Request Log (last 10)</h3>
+          {aiRequestLogs.map((log, idx) => (
+            <div key={log.timestamp + '-' + idx} style={{marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #eee'}}>
+              <div style={{fontSize: 12, color: '#888'}}>
+                [{new Date(log.timestamp).toLocaleTimeString()}] {log.provider.toUpperCase()} / {log.mode} / <b>{log.model}</b>
+              </div>
+              <div style={{fontSize: 12}}><b>Endpoint:</b> {log.endpoint}</div>
+              <div style={{fontSize: 12}}><b>Prompt:</b> <span style={{color:'#333'}}>{log.prompt}</span></div>
+              {log.params && (
+                <div style={{fontSize: 12}}><b>Params:</b> {JSON.stringify(log.params)}</div>
+              )}
+              {log.response && (
+                <div style={{fontSize: 12, color: '#0a0'}}><b>Response:</b> {log.response}</div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
