@@ -8,6 +8,8 @@ export class GeminiLiveClient {
   private isConnected = false
   private isRecording = false
   private apiKey: string
+  private connectedModel: string | null = null
+  private ttsModel: string | null = null
   private onMessageCallback: ((message: string) => void) | null = null
   private onErrorCallback: ((error: string) => void) | null = null
 
@@ -15,15 +17,23 @@ export class GeminiLiveClient {
     this.apiKey = apiKey
   }
 
-  async connect(agent: any): Promise<void> {
+  async connect(agent: any, options?: { model?: string, ttsModel?: string }): Promise<void> {
     try {
       console.log('🤖 Gemini Live: Connecting...')
+      if (options?.model) {
+        this.connectedModel = options.model
+        console.log('🤖 Gemini Live: connect model =', this.connectedModel)
+      }
+      if (options?.ttsModel) {
+        this.ttsModel = options.ttsModel
+        console.log('🤖 Gemini Live: TTS model =', this.ttsModel)
+      }
       
       // Initialize audio context
       this.audioContext = new AudioContext({ sampleRate: 16000 })
       this.isConnected = true
       
-      console.log('🤖 Gemini Live: Connected (simplified mode)')
+  console.log('🤖 Gemini Live: Connected (simplified mode)')
       
     } catch (error) {
       console.error('🤖 Gemini Live: Connection failed:', error)
@@ -99,7 +109,9 @@ export class GeminiLiveClient {
       // Simulate processing delay
       setTimeout(() => {
         if (this.onMessageCallback) {
-          this.onMessageCallback('Gemini Live: Получил ваше аудио сообщение! (Обработка аудио в разработке)')
+          const ttsInfo = this.ttsModel ? ` (TTS: ${this.ttsModel})` : ''
+          const modelInfo = this.connectedModel ? ` [model: ${this.connectedModel}]` : ''
+          this.onMessageCallback(`Gemini Live: Получил ваше аудио сообщение!${modelInfo}${ttsInfo} (Обработка аудио в разработке)`)
         }
       }, 1000)
       

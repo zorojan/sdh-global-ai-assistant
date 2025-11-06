@@ -8,6 +8,8 @@ import agentsRoutes from './routes/agents';
 import authRoutes from './routes/auth';
 import realtimeRoutes from './routes/realtime';
 import validationRoutes from './routes/validation';
+import geminiAudioRoutes from './routes/gemini-audio';
+import geminiLiveProxyRoutes from './routes/gemini-live-proxy';
 
 dotenv.config();
 
@@ -32,6 +34,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/gemini/audio', geminiAudioRoutes);
+app.use('/api/gemini/live', geminiLiveProxyRoutes);
 app.use('/api', validationRoutes);
 
 // Public endpoint for API key (needed by frontend)

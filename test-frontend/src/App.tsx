@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import { GeminiLiveClient } from './gemini-live-client-simple';
+import { GeminiLiveClient } from './gemini-live-client-new';
 import { OpenAIRealtimeClient } from './openai-realtime-client-simple';
 import './App.css';
 
@@ -102,6 +102,36 @@ function App() {
     updateCurrentDiagnostics()
   }, [selectedAgent, provider, mode])
 
+  // Helper to compute the actual model selected for a provider+mode
+  const computeModelFor = (prov: Provider, m: Mode) => {
+    if (prov === 'gemini') {
+      if (m === 'audio') {
+        return diagnostics.default_model || diagnostics.gemini_model || 'gemini-2.5-flash-preview-native-audio-dialog'
+      }
+      // chat
+      return diagnostics.message_dialog_model || diagnostics.gemini_model || 'gemini-2.5-flash'
+    }
+    // openai
+    return diagnostics.openai_model || (m === 'audio' ? 'gpt-4o-realtime-preview' : 'gpt-4o-mini')
+  }
+
+  // Helper to compute the TTS model (for Gemini) or general tts model setting
+  const computeTTSModel = (prov: Provider) => {
+    if (prov === 'gemini') {
+      // prefer explicit gemini tts setting, then a general default_tts_model, otherwise fallbacks
+      // common admin key names we might have: gemini_tts_model, default_tts_model
+      // try a few possibilities from diagnostics
+      return (
+        (diagnostics as any).gemini_tts_model ||
+        (diagnostics as any).default_tts_model ||
+        (diagnostics as any).openai_tts_model ||
+        'gemini-2.5-flash'
+      )
+    }
+    // for OpenAI use configured tts or default
+    return (diagnostics as any).openai_tts_model || (diagnostics as any).default_tts_model || 'gpt-4o-mini-tts'
+  }
+
   const loadAgents = async () => {
     try {
       const response = await fetch(`${API_URL}/api/agents`)
@@ -179,22 +209,21 @@ function App() {
   // Логируем initial payload при смене режима или агента
   useEffect(() => {
     if (!selectedAgent) return;
-    const chatModel = provider === 'gemini'
-      ? (diagnostics.message_dialog_model || diagnostics.gemini_model || 'default')
-      : (diagnostics.openai_model || 'default');
+    const model = computeModelFor(provider, mode);
     const systemPrompt = selectedAgent?.system_prompt || '';
     const logEntry: AIRequestLog = {
       timestamp: Date.now(),
       provider,
       mode,
-      model: chatModel,
+      model,
       endpoint: provider === 'gemini' ? (mode === 'chat' ? 'Gemini Chat' : 'Gemini Audio') : (mode === 'chat' ? 'OpenAI Chat' : 'OpenAI Audio'),
       prompt: systemPrompt,
       params: {
         agentId: selectedAgent?.id,
         agentName: selectedAgent?.name,
         language: selectedAgent?.language,
-        model: chatModel
+        model,
+        ttsModel: computeTTSModel(provider)
       }
     };
     setInitialSessionLogs(prev => [logEntry, ...prev.slice(0, 9)]);
@@ -216,9 +245,7 @@ function App() {
     setMessages(prev => [...prev, userMessage])
 
     // Формируем лог запроса
-    const chatModel = provider === 'gemini'
-      ? (diagnostics.message_dialog_model || diagnostics.gemini_model || 'default')
-      : (diagnostics.openai_model || 'default')
+    const chatModel = computeModelFor(provider, 'chat')
     const systemPrompt = selectedAgent?.system_prompt || ''
     const fullPrompt = `${systemPrompt}\nUser: ${message}`
     const logEntry: AIRequestLog = {
@@ -307,11 +334,36 @@ function App() {
         console.log('✅ API key found:', apiKey.substring(0, 10) + '...')
       }
 
+      // Log the connect-time payload (one-time initial payload sent to provider)
+      try {
+          const connectModel = computeModelFor(provider, 'audio')
+          const ttsModel = computeTTSModel(provider)
+            const systemPrompt = selectedAgent?.system_prompt || ''
+            const connectLog: AIRequestLog = {
+              timestamp: Date.now(),
+              provider,
+              mode: 'audio',
+              model: connectModel,
+              endpoint: provider === 'gemini' ? 'Gemini Connect' : 'OpenAI Connect',
+              prompt: systemPrompt,
+              params: {
+                agentId: selectedAgent?.id,
+                agentName: selectedAgent?.name,
+                language: selectedAgent?.language,
+                model: connectModel,
+                ttsModel
+              }
+            }
+            setAIRequestLogs(prev => [connectLog, ...prev.slice(0, 9)])
+      } catch (err) {
+        console.warn('Failed to log connect payload:', err)
+      }
+
       // Initialize appropriate client
       if (provider === 'gemini') {
         geminiClientRef.current = new GeminiLiveClient(apiKey)
         
-        geminiClientRef.current.onMessage((message: string) => {
+        geminiClientRef.current!.onMessage((message: string) => {
           const aiMessage: Message = {
             id: Date.now().toString() + '_ai_voice',
             text: message,
@@ -321,12 +373,12 @@ function App() {
           setMessages(prev => [...prev, aiMessage])
         })
         
-        geminiClientRef.current.onError((error: string) => {
+        geminiClientRef.current!.onError((error: string) => {
           setError(`Gemini Live: ${error}`)
         })
         
-        await geminiClientRef.current.connect(selectedAgent)
-        await geminiClientRef.current.startRecording()
+        await geminiClientRef.current!.connect(selectedAgent, { model: computeModelFor(provider, 'audio'), ttsModel: computeTTSModel(provider) })
+        await geminiClientRef.current!.startRecording()
         
       } else {
         openaiClientRef.current = new OpenAIRealtimeClient(apiKey)
