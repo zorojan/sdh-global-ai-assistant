@@ -4,6 +4,76 @@ import { authenticateToken } from './auth';
 
 const router = express.Router();
 
+// Standardized language resolution function
+const resolveLanguage = async (
+  agent: any, 
+  interactionType: 'chat' | 'audio' | 'realtime' = 'chat',
+  provider: 'gemini' | 'openai' = 'gemini'
+) => {
+  try {
+    // Priority 1: Agent-specific language settings
+    let resolvedLanguage: string;
+    
+    if (interactionType === 'audio' || interactionType === 'realtime') {
+      resolvedLanguage = agent?.voice_language || agent?.language;
+    } else {
+      resolvedLanguage = agent?.language;
+    }
+    
+    if (resolvedLanguage && resolvedLanguage !== 'auto') {
+      console.log(`🌐 Language resolved from agent (${interactionType}):`, resolvedLanguage);
+      return resolvedLanguage;
+    }
+    
+    // Priority 2: Provider-specific global settings
+    let providerLanguageKey: string;
+    switch (provider) {
+      case 'gemini':
+        providerLanguageKey = 'gemini_default_language';
+        break;
+      case 'openai':
+        providerLanguageKey = interactionType === 'audio' || interactionType === 'realtime' 
+          ? 'realtime_language' 
+          : 'openai_chat_language';
+        break;
+      default:
+        providerLanguageKey = 'gemini_default_language';
+    }
+    
+    const { data: providerLanguageSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', providerLanguageKey)
+      .single();
+    
+    if (providerLanguageSetting?.value && providerLanguageSetting.value !== 'auto') {
+      console.log(`🌐 Language resolved from provider setting (${providerLanguageKey}):`, providerLanguageSetting.value);
+      return providerLanguageSetting.value;
+    }
+    
+    // Priority 3: General default language
+    const { data: defaultLanguageSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'default_language')
+      .single();
+    
+    if (defaultLanguageSetting?.value && defaultLanguageSetting.value !== 'auto') {
+      console.log(`🌐 Language resolved from default setting:`, defaultLanguageSetting.value);
+      return defaultLanguageSetting.value;
+    }
+    
+    // Priority 4: Hardcoded fallback
+    const fallbackLanguage = 'hy-AM'; // Armenian as primary fallback, then English
+    console.log(`🌐 Language using fallback:`, fallbackLanguage);
+    return fallbackLanguage;
+    
+  } catch (error) {
+    console.error('Error resolving language:', error);
+    return 'hy-AM'; // Safe fallback
+  }
+};
+
 // Function to get company information from settings
 const getCompanyInfo = async () => {
   const { data: settings, error } = await supabase
@@ -207,7 +277,7 @@ router.delete('/:id', authenticateToken, async (req: any, res: express.Response)
   }
 });
 
-// Basic chat endpoint
+// Basic chat endpoint with provider detection
 router.post('/chat', async (req: any, res: express.Response) => {
   try {
     const { message, agentId } = req.body;
@@ -253,9 +323,40 @@ router.post('/chat', async (req: any, res: express.Response) => {
       }
     }
 
-    // Get company information and Gemini API key
+    // Get company information and AI provider setting
     const companyInfo = await getCompanyInfo();
     
+    const { data: providerSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'ai_provider')
+      .single();
+
+    const aiProvider = providerSetting?.value || 'gemini';
+    console.log('🤖 AI Provider:', aiProvider);
+
+    // Resolve language based on provider and agent
+    const language = await resolveLanguage(agent, 'chat', aiProvider as 'gemini' | 'openai');
+    console.log('🌐 Resolved language for chat:', language);
+
+    // Route to appropriate AI service based on provider
+    if (aiProvider === 'openai') {
+      return await handleOpenAIChat(req, res, agent, companyInfo, language);
+    } else {
+      return await handleGeminiChat(req, res, agent, companyInfo, language);
+    }
+
+  } catch (error: any) {
+    console.error('Chat error:', error);
+    res.status(500).json({ error: 'Failed to process message' });
+  }
+});
+
+// Handle Gemini chat
+const handleGeminiChat = async (req: any, res: express.Response, agent: any, companyInfo: any, language: string) => {
+  try {
+    const { message } = req.body;
+
     const { data: apiKeySetting } = await supabase
       .from('settings')
       .select('value')
@@ -277,7 +378,7 @@ router.post('/chat', async (req: any, res: express.Response) => {
 
     const model = modelSetting?.value || 'gemini-1.5-flash';
 
-    // Prepare the system prompt with company context
+    // Prepare the system prompt with company context and language instruction
     const systemPrompt = `${agent.system_prompt || agent.personality || 'You are a helpful AI assistant.'}
 
 Company Context:
@@ -287,15 +388,18 @@ Company Context:
 - Company Documents/Address Info: ${companyInfo.company_documents}
 
 You are representing ${companyInfo.company_name}. Be helpful, professional, and knowledgeable about the company's services. 
-IMPORTANT: Always use the exact information provided in the Company Context above, especially for addresses, contact information, and official details. Do not make up or guess any information about the company.`;
+IMPORTANT: Always use the exact information provided in the Company Context above, especially for addresses, contact information, and official details. Do not make up or guess any information about the company.
+
+Please respond in the language: ${language} (${language === 'hy-AM' ? 'Armenian' : language === 'en-US' ? 'English' : language})`;
 
     console.log('🤖 Chat request details:', {
       message: message.substring(0, 100) + '...',
-      agentId,
+      agentId: agent.id,
       agentName: agent.name,
       model,
       companyName: companyInfo.company_name,
-      hasApiKey: !!apiKeySetting.value
+      hasApiKey: !!apiKeySetting.value,
+      language: language
     });
 
     console.log('🏢 Company information being sent to Gemini:', {
@@ -421,9 +525,144 @@ IMPORTANT: Always use the exact information provided in the Company Context abov
     }
 
   } catch (error: any) {
-    console.error('Chat error:', error);
-    res.status(500).json({ error: 'Failed to process message' });
+    console.error('Gemini chat error:', error);
+    res.status(500).json({ error: 'Failed to process Gemini message' });
   }
-});
+};
+
+// Handle OpenAI chat
+const handleOpenAIChat = async (req: any, res: express.Response, agent: any, companyInfo: any, language: string) => {
+  try {
+    const { message } = req.body;
+
+    const { data: apiKeySetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'openai_api_key')
+      .single();
+
+    if (!apiKeySetting?.value) {
+      return res.status(500).json({ 
+        error: 'OpenAI API key is not configured. Please set up the API key in the admin panel.' 
+      });
+    }
+
+    // Get the OpenAI model setting
+    const { data: modelSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'openai_model')
+      .single();
+
+    const model = modelSetting?.value || 'gpt-4o-mini';
+
+    // Prepare the system prompt with company context and language instruction
+    const systemPrompt = `${agent.system_prompt || agent.personality || 'You are a helpful AI assistant.'}
+
+Company Context:
+- Company Name: ${companyInfo.company_name}
+- Company Description: ${companyInfo.company_description}
+- Website: ${companyInfo.company_website}
+- Company Documents/Address Info: ${companyInfo.company_documents}
+
+You are representing ${companyInfo.company_name}. Be helpful, professional, and knowledgeable about the company's services. 
+IMPORTANT: Always use the exact information provided in the Company Context above, especially for addresses, contact information, and official details. Do not make up or guess any information about the company.
+
+Please respond in the language: ${language} (${language === 'hy-AM' ? 'Armenian' : language === 'en-US' ? 'English' : language})`;
+
+    console.log('🤖 OpenAI Chat request details:', {
+      message: message.substring(0, 100) + '...',
+      agentId: agent.id,
+      agentName: agent.name,
+      model,
+      language,
+      companyName: companyInfo.company_name,
+      hasApiKey: !!apiKeySetting.value
+    });
+
+    try {
+      // Make API call to OpenAI
+      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKeySetting.value}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: message
+            }
+          ],
+          max_tokens: 1024,
+          temperature: 0.7
+        })
+      });
+
+      console.log('📊 OpenAI API response status:', openaiResponse.status, openaiResponse.statusText);
+
+      if (!openaiResponse.ok) {
+        const errorText = await openaiResponse.text();
+        console.error('❌ OpenAI API error response:', errorText);
+        throw new Error(`OpenAI API error: ${openaiResponse.status} ${openaiResponse.statusText}`);
+      }
+
+      const openaiData = await openaiResponse.json() as any;
+      console.log('✅ OpenAI API response received:', {
+        choicesCount: openaiData.choices?.length || 0,
+        hasContent: !!(openaiData.choices?.[0]?.message?.content),
+        finishReason: openaiData.choices?.[0]?.finish_reason
+      });
+      
+      // Extract the response text from OpenAI's response
+      let response = 'Sorry, I could not generate a response.';
+      
+      if (openaiData.choices && openaiData.choices.length > 0) {
+        const choice = openaiData.choices[0];
+        if (choice.message && choice.message.content) {
+          response = choice.message.content;
+          console.log('✅ Extracted OpenAI response:', response.substring(0, 200) + '...');
+        } else {
+          console.log('❌ No content found in OpenAI choice');
+        }
+      } else {
+        console.log('❌ No choices found in OpenAI response');
+      }
+
+      res.json({ 
+        response: response.trim(),
+        agent: {
+          id: agent.id,
+          name: agent.name
+        }
+      });
+
+    } catch (openaiError: any) {
+      console.error('OpenAI API call failed:', openaiError);
+      
+      // Fallback response if OpenAI fails
+      const fallbackResponse = `Hello! I'm ${agent.name} from ${companyInfo.company_name}. I received your message: "${message}". I'm having trouble connecting to my AI service right now, but I'm here to help you with information about our services.`;
+      
+      res.json({ 
+        response: fallbackResponse,
+        agent: {
+          id: agent.id,
+          name: agent.name
+        },
+        warning: 'AI service temporarily unavailable, using fallback response'
+      });
+    }
+
+  } catch (error: any) {
+    console.error('OpenAI chat error:', error);
+    res.status(500).json({ error: 'Failed to process OpenAI message' });
+  }
+};
 
 export default router;
