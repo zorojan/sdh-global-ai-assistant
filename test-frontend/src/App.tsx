@@ -2,6 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { GeminiLiveClient } from './gemini-live-client-new';
+import { GeminiLiveClientSDK } from './gemini-live-client-sdk';
+import { GeminiLiveClientWorkingFixed as GeminiLiveClientWorking } from './gemini-live-client-working-fixed';
+import { GeminiLiveFrontendClient } from './gemini-live-client-frontend';
 import { OpenAIRealtimeClient } from './openai-realtime-client-simple';
 import './App.css';
 
@@ -81,9 +84,15 @@ function App() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [diagnostics, setDiagnostics] = useState<DiagnosticsData>({})
   const [showDiagnostics, setShowDiagnostics] = useState(true)
+  const [useSDKClient, setUseSDKClient] = useState(true) // New state for SDK version
+  const [useWorkingClient, setUseWorkingClient] = useState(false) // Working implementation
+  const [useFrontendClient, setUseFrontendClient] = useState(false) // Frontend implementation
 
   // Audio clients
   const geminiClientRef = useRef<GeminiLiveClient | null>(null)
+  const geminiSDKClientRef = useRef<GeminiLiveClientSDK | null>(null)
+  const geminiWorkingClientRef = useRef<GeminiLiveClientWorking | null>(null)
+  const geminiFrontendClientRef = useRef<GeminiLiveFrontendClient | null>(null)
   const openaiClientRef = useRef<OpenAIRealtimeClient | null>(null)
   const [apiKeys, setApiKeys] = useState<{gemini: string, openai: string}>({
     gemini: '',
@@ -106,7 +115,9 @@ function App() {
   const computeModelFor = (prov: Provider, m: Mode) => {
     if (prov === 'gemini') {
       if (m === 'audio') {
-        return diagnostics.default_model || diagnostics.gemini_model || 'gemini-2.5-flash-preview-native-audio-dialog'
+        // During debugging prefer a known Live-capable model to avoid preview-specific closures.
+        // If you want to revert to diagnostics-suggested models later, change this back.
+        return 'gemini-2.0-flash-live-001'
       }
       // chat
       return diagnostics.message_dialog_model || diagnostics.gemini_model || 'gemini-2.5-flash'
@@ -361,24 +372,102 @@ function App() {
 
       // Initialize appropriate client
       if (provider === 'gemini') {
-        geminiClientRef.current = new GeminiLiveClient(apiKey)
-        
-        geminiClientRef.current!.onMessage((message: string) => {
-          const aiMessage: Message = {
-            id: Date.now().toString() + '_ai_voice',
-            text: message,
-            sender: 'ai',
-            timestamp: Date.now()
-          }
-          setMessages(prev => [...prev, aiMessage])
-        })
-        
-        geminiClientRef.current!.onError((error: string) => {
-          setError(`Gemini Live: ${error}`)
-        })
-        
-        await geminiClientRef.current!.connect(selectedAgent, { model: computeModelFor(provider, 'audio'), ttsModel: computeTTSModel(provider) })
-        await geminiClientRef.current!.startRecording()
+        if (useFrontendClient) {
+          // Use frontend implementation (perfect copy of main frontend)
+          geminiFrontendClientRef.current = new GeminiLiveFrontendClient(apiKey)
+          
+          geminiFrontendClientRef.current!.on('content', (content: any) => {
+            // Handle text content if available
+            if (content.parts) {
+              for (const part of content.parts) {
+                if (part.text) {
+                  const aiMessage: Message = {
+                    id: Date.now().toString() + '_ai_frontend_voice',
+                    text: part.text,
+                    sender: 'ai',
+                    timestamp: Date.now()
+                  }
+                  setMessages(prev => [...prev, aiMessage])
+                }
+              }
+            }
+          })
+          
+          geminiFrontendClientRef.current!.on('error', (error: Error) => {
+            setError(`Gemini Live Frontend: ${error.message}`)
+          })
+          
+          await geminiFrontendClientRef.current!.connect(selectedAgent, { 
+            model: computeModelFor(provider, 'audio'),
+            language: selectedAgent?.language || 'Armenian'
+          })
+          await geminiFrontendClientRef.current!.startRecording()
+          
+        } else if (useWorkingClient) {
+          // Use working implementation (based on working example)
+          geminiWorkingClientRef.current = new GeminiLiveClientWorking(apiKey)
+          
+          geminiWorkingClientRef.current!.onMessage((message: string) => {
+            const aiMessage: Message = {
+              id: Date.now().toString() + '_ai_working_voice',
+              text: message,
+              sender: 'ai',
+              timestamp: Date.now()
+            }
+            setMessages(prev => [...prev, aiMessage])
+          })
+          
+          geminiWorkingClientRef.current!.onError((error: string) => {
+            setError(`Gemini Live Working: ${error}`)
+          })
+          
+          await geminiWorkingClientRef.current!.connect(selectedAgent, { 
+            model: computeModelFor(provider, 'audio'),
+            language: selectedAgent?.language || 'Armenian'
+          })
+          await geminiWorkingClientRef.current!.startRecording()
+          
+        } else if (useSDKClient) {
+          // Use new SDK-based client
+          geminiSDKClientRef.current = new GeminiLiveClientSDK(apiKey)
+          
+          geminiSDKClientRef.current!.onMessage((message: string) => {
+            const aiMessage: Message = {
+              id: Date.now().toString() + '_ai_sdk_voice',
+              text: message,
+              sender: 'ai',
+              timestamp: Date.now()
+            }
+            setMessages(prev => [...prev, aiMessage])
+          })
+          
+          geminiSDKClientRef.current!.onError((error: string) => {
+            setError(`Gemini Live SDK: ${error}`)
+          })
+          
+          await geminiSDKClientRef.current!.connect(selectedAgent, { model: computeModelFor(provider, 'audio'), ttsModel: computeTTSModel(provider) })
+          await geminiSDKClientRef.current!.startRecording()
+        } else {
+          // Use old proxy-based client
+          geminiClientRef.current = new GeminiLiveClient(apiKey)
+          
+          geminiClientRef.current!.onMessage((message: string) => {
+            const aiMessage: Message = {
+              id: Date.now().toString() + '_ai_voice',
+              text: message,
+              sender: 'ai',
+              timestamp: Date.now()
+            }
+            setMessages(prev => [...prev, aiMessage])
+          })
+          
+          geminiClientRef.current!.onError((error: string) => {
+            setError(`Gemini Live: ${error}`)
+          })
+          
+          await geminiClientRef.current!.connect(selectedAgent, { model: computeModelFor(provider, 'audio'), ttsModel: computeTTSModel(provider) })
+          await geminiClientRef.current!.startRecording()
+        }
         
       } else {
         openaiClientRef.current = new OpenAIRealtimeClient(apiKey)
@@ -425,6 +514,21 @@ function App() {
       if (geminiClientRef.current) {
         geminiClientRef.current.disconnect()
         geminiClientRef.current = null
+      }
+      
+      if (geminiSDKClientRef.current) {
+        geminiSDKClientRef.current.disconnect()
+        geminiSDKClientRef.current = null
+      }
+      
+      if (geminiWorkingClientRef.current) {
+        geminiWorkingClientRef.current.disconnect()
+        geminiWorkingClientRef.current = null
+      }
+      
+      if (geminiFrontendClientRef.current) {
+        geminiFrontendClientRef.current.disconnect()
+        geminiFrontendClientRef.current = null
       }
       
       if (openaiClientRef.current) {
@@ -487,6 +591,90 @@ function App() {
           ⚡ OpenAI Realtime
         </button>
       </div>
+
+      {/* Client Implementation Toggle (only for Gemini Audio) */}
+      {provider === 'gemini' && mode === 'audio' && (
+        <div className="client-toggle" style={{ margin: '8px 0', padding: '12px',  border: '1px solid #cce7ff', borderRadius: '6px' }}>
+          <div style={{ fontWeight: '600', marginBottom: '8px', color: '#333' }}>Choose Implementation:</div>
+          
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer', marginBottom: '6px' }}>
+            <input
+              type="radio"
+              name="clientType"
+              checked={useFrontendClient}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setUseFrontendClient(true);
+                  setUseWorkingClient(false);
+                  setUseSDKClient(false);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>🎵 <strong>Frontend Implementation</strong> (Perfect copy of main frontend)</span>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer', marginBottom: '6px' }}>
+            <input
+              type="radio"
+              name="clientType"
+              checked={useWorkingClient && !useFrontendClient}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setUseWorkingClient(true);
+                  setUseFrontendClient(false);
+                  setUseSDKClient(false);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>🎯 <strong>Working Implementation</strong> (From your working example)</span>
+          </label>
+          
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer', marginBottom: '6px' }}>
+            <input
+              type="radio"
+              name="clientType"
+              checked={useSDKClient && !useWorkingClient && !useFrontendClient}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setUseSDKClient(true);
+                  setUseWorkingClient(false);
+                  setUseFrontendClient(false);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>🆕 New SDK Client (MediaRecorder approach)</span>
+          </label>
+          
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer' }}>
+            <input
+              type="radio"
+              name="clientType"
+              checked={!useSDKClient && !useWorkingClient && !useFrontendClient}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setUseSDKClient(false);
+                  setUseWorkingClient(false);
+                  setUseFrontendClient(false);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>🔧 Backend Proxy (Traditional)</span>
+          </label>
+          
+          <div style={{ fontSize: '12px', color: '#666', marginTop: '8px', paddingLeft: '4px', background: '#fff', padding: '6px', borderRadius: '4px' }}>
+            {useWorkingClient 
+              ? '🎯 Uses ScriptProcessorNode + PCM format - Proven to work!'
+              : useSDKClient 
+                ? '🆕 Uses MediaRecorder + WebM format - May have session issues'
+                : '🔧 Uses Backend Proxy - Traditional implementation'
+            }
+          </div>
+        </div>
+      )}
 
       {/* Mode Selection */}
       <div className="mode-selector">

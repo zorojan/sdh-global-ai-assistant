@@ -24,6 +24,7 @@ import KeynoteCompanion from './components/demo/keynote-companion/KeynoteCompani
 import Header from './components/Header';
 import UserSettings from './components/UserSettings';
 import DataInitializer from './components/DataInitializer';
+import DebugPanel from './components/DebugPanel';
 import { ModeSelector, InteractionMode } from './components/ModeSelector';
 import { TextChat } from './components/TextChat';
 import { LiveAPIProvider } from './contexts/LiveAPIContext';
@@ -230,6 +231,7 @@ function App() {
           </div>
         </LiveAPIProvider>
       </DataInitializer>
+  <DebugPanel />
       <div className="app-footer">
         <a href="https://sdh.global" target="_blank" rel="noopener noreferrer">
           <img

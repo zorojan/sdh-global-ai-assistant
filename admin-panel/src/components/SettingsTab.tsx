@@ -367,15 +367,27 @@ export default function SettingsTab() {
                             <option value="auto">🌐 Auto-detect</option>
                           </select>
                         ) : setting.type === 'select' && setting.key === 'gemini_tts_model' ? (
-                          <select
-                            value={setting.value}
-                            onChange={(e) => handleSelectChange(setting.key, e.target.value)}
-                            disabled={updateMutation.isLoading}
-                            className="flex-1 form-select border border-gray-300 rounded-md px-3 py-2 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                          >
-                            <option value="gemini-2.5-flash-tts">⚡ Gemini 2.5 Flash TTS (быстрый)</option>
-                            <option value="gemini-2.5-pro-tts">💎 Gemini 2.5 Pro TTS (качественный)</option>
-                          </select>
+                          <>
+                            <select
+                              value={setting.value}
+                              onChange={(e) => handleSelectChange(setting.key, e.target.value)}
+                              disabled={updateMutation.isLoading}
+                              className="flex-1 form-select border border-gray-300 rounded-md px-3 py-2 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                            >
+                              <option value="gemini-2.5-flash-tts">⚡ Gemini 2.5 Flash TTS (быстрый)</option>
+                              <option value="gemini-2.5-pro-tts">💎 Gemini 2.5 Pro TTS (качественный)</option>
+                              <option value="gemini-2.5-flash-native-audio-preview-09-2025">🔊 Gemini 2.5 Native Audio (Preview) - High-fidelity voice</option>
+                              <option value="gemini-2.5-flash-native-audio">🔉 Gemini 2.5 Native Audio (stable) - if available in your account</option>
+                              <option value="gemini-2.5-flash-tts-hd">💠 Gemini 2.5 Flash TTS HD (when available)</option>
+                              <option value="gemini-2.5-pro-tts-hd">💠 Gemini 2.5 Pro TTS HD (when available)</option>
+                            </select>
+                            <div className="mt-2 text-sm text-gray-600">
+                              Документация по Gemini TTS: {' '}
+                              <a href="https://ai.google.dev/gemini-api/docs/speech-generation" target="_blank" rel="noreferrer" className="text-blue-600 underline">Speech generation</a>{' '}
+                              • {' '}
+                              <a href="https://docs.cloud.google.com/text-to-speech/docs/gemini-tts" target="_blank" rel="noreferrer" className="text-blue-600 underline">Gemini TTS</a>
+                            </div>
+                          </>
                         ) : setting.type === 'select' && (setting.key.includes('model') || setting.key.includes('chat') || setting.key.includes('stt') || setting.key.includes('tts')) ? (
                           <select
                             value={setting.value}

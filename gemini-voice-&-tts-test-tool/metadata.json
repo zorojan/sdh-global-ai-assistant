@@ -1,0 +1,7 @@
+{
+  "name": "Gemini Voice & TTS Test Tool",
+  "description": "An application to test voice dialog chat and Text-to-Speech (TTS) capabilities of the Gemini API, with a focus on language support testing.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

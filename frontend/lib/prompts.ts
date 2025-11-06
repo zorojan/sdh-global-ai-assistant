@@ -23,9 +23,15 @@ const getCompanyInfo = async (): Promise<CompanyInfo> => {
   }
 
   try {
-    const response = await fetch('/api/settings');
-    if (!response.ok) throw new Error('Failed to fetch settings');
-    
+    // Backend settings endpoint runs on the backend server (port 3001)
+    // Use the same API base as App.tsx to avoid hitting the Vite dev server which returns HTML 404 pages.
+    const API_BASE = 'http://localhost:3001/api';
+    const response = await fetch(`${API_BASE}/public/settings`);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Failed to fetch settings: ${response.status} ${text}`);
+    }
+
     const settings = await response.json();
     const companyInfo: CompanyInfo = {};
     

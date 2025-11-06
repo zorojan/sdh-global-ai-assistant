@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "SDH Global AI Assistant - Multi-frontend architecture",
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:admin\"",
+    "dev": "echo \"❌ DO NOT USE npm run dev from root! Use service-manager.bat or start-all.bat instead\" && exit 1",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
     "dev:admin": "cd admin-panel && npm run dev",

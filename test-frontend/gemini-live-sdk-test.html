@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Live SDK Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .primary { background: #007bff; color: white; }
+        .success { background: #28a745; color: white; }
+        .danger { background: #dc3545; color: white; }
+        .messages {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            background: #f8f9fa;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        .user { background: #e3f2fd; }
+        .ai { background: #f1f8e9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Gemini Live SDK Test</h1>
+        <p><strong>Based on your working example!</strong></p>
+        
+        <div class="status info">
+            📝 This test page verifies the new SDK-based implementation
+        </div>
+
+        <div>
+            <label>API Key:</label><br>
+            <input type="password" id="apiKey" placeholder="Enter your Gemini API key" style="width: 300px; padding: 8px; margin: 10px 0;">
+        </div>
+
+        <div>
+            <button id="connectBtn" class="primary">🔗 Connect</button>
+            <button id="startBtn" class="success" disabled>🎤 Start Recording</button>
+            <button id="stopBtn" class="danger" disabled>🔴 Stop Recording</button>
+            <button id="disconnectBtn" class="danger" disabled>❌ Disconnect</button>
+        </div>
+
+        <div id="status" class="status info">
+            Ready to connect...
+        </div>
+
+        <div class="messages" id="messages">
+            <div class="message info">Welcome! Click Connect to start testing the Gemini Live SDK.</div>
+        </div>
+
+        <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px;">
+            <h3>🆕 SDK Features Tested:</h3>
+            <ul>
+                <li>✅ @google/genai SDK integration</li>
+                <li>✅ ai.live.connect() method</li>
+                <li>✅ Modality.AUDIO configuration</li>
+                <li>✅ Real-time audio streaming</li>
+                <li>✅ Armenian language support</li>
+                <li>✅ Voice config with Zephyr voice</li>
+                <li>✅ Audio transcription (input/output)</li>
+            </ul>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import our SDK client
+        import { GeminiLiveClientSDK } from './src/gemini-live-client-sdk.js';
+
+        let client = null;
+        
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+        const connectBtn = document.getElementById('connectBtn');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const apiKeyInput = document.getElementById('apiKey');
+
+        function addMessage(text, type = 'info') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = `${new Date().toLocaleTimeString()}: ${text}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateStatus(text, type = 'info') {
+            statusDiv.textContent = text;
+            statusDiv.className = `status ${type}`;
+        }
+
+        connectBtn.addEventListener('click', async () => {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                updateStatus('Please enter your API key', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Connecting to Gemini Live SDK...', 'info');
+                
+                client = new GeminiLiveClientSDK(apiKey);
+                
+                // Set up callbacks
+                client.onMessage((message) => {
+                    addMessage(`AI: ${message}`, 'ai');
+                });
+                
+                client.onError((error) => {
+                    addMessage(`Error: ${error}`, 'error');
+                    updateStatus(`Error: ${error}`, 'error');
+                });
+
+                // Mock agent with Armenian system prompt
+                const agent = {
+                    system_prompt: 'You are a helpful conversational AI. Start with a welcome message in Armenian. All responses must be in Armenian. Speak naturally and be friendly.'
+                };
+
+                await client.connect(agent, {
+                    model: 'gemini-2.5-flash-native-audio-preview-09-2025'
+                });
+
+                updateStatus('Connected! Ready to record.', 'success');
+                addMessage('🎉 Connected to Gemini Live SDK successfully!', 'success');
+                
+                connectBtn.disabled = true;
+                startBtn.disabled = false;
+                disconnectBtn.disabled = false;
+                
+            } catch (error) {
+                updateStatus(`Connection failed: ${error.message}`, 'error');
+                addMessage(`Connection failed: ${error.message}`, 'error');
+            }
+        });
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                updateStatus('Starting recording...', 'info');
+                await client.startRecording();
+                updateStatus('🎤 Recording... Speak now!', 'success');
+                addMessage('🎤 Recording started - speak in Armenian or any language', 'info');
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+            } catch (error) {
+                updateStatus(`Recording failed: ${error.message}`, 'error');
+                addMessage(`Recording failed: ${error.message}`, 'error');
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            try {
+                client.stopRecording();
+                updateStatus('Recording stopped', 'info');
+                addMessage('🔇 Recording stopped', 'info');
+                
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                
+            } catch (error) {
+                updateStatus(`Stop failed: ${error.message}`, 'error');
+                addMessage(`Stop failed: ${error.message}`, 'error');
+            }
+        });
+
+        disconnectBtn.addEventListener('click', async () => {
+            try {
+                if (client) {
+                    await client.disconnect();
+                }
+                updateStatus('Disconnected', 'info');
+                addMessage('❌ Disconnected from Gemini Live SDK', 'info');
+                
+                connectBtn.disabled = false;
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+                disconnectBtn.disabled = true;
+                client = null;
+                
+            } catch (error) {
+                updateStatus(`Disconnect failed: ${error.message}`, 'error');
+                addMessage(`Disconnect failed: ${error.message}`, 'error');
+            }
+        });
+
+        // Add API key from localStorage if available
+        const savedKey = localStorage.getItem('gemini_api_key');
+        if (savedKey) {
+            apiKeyInput.value = savedKey;
+        }
+
+        // Save API key on input
+        apiKeyInput.addEventListener('input', () => {
+            localStorage.setItem('gemini_api_key', apiKeyInput.value);
+        });
+
+        addMessage('🆕 Using new SDK-based implementation from your working example', 'success');
+    </script>
+</body>
+</html>

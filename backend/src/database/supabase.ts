@@ -6,20 +6,54 @@ dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL || 'https://ompuxvouefyzepsyprqb.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Supabase URL and service key are required. Please check your environment variables.');
+// Allow graceful fallback if Supabase is not available
+let supabase: any = null;
+let supabaseAvailable = false;
+
+// Try service key first, then anon key, then local mode
+const apiKey = supabaseServiceKey || supabaseAnonKey;
+
+if (!supabaseUrl || !apiKey || apiKey === 'replace-with-your-service-key' || apiKey.includes('REPLACE_WITH')) {
+  console.log('⚠️  Supabase credentials not configured. Running in local mode.');
+  console.log('   Please update SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY in your .env file');
+  console.log('   Get your key from: https://app.supabase.com/project/_/settings/api');
+} else {
+  try {
+    supabase = createClient(supabaseUrl, apiKey);
+    supabaseAvailable = true;
+    const keyType = supabaseServiceKey ? 'service key' : 'anon key';
+    console.log(`📦 Connected to Supabase using ${keyType}`);
+  } catch (error) {
+    console.log('❌ Failed to connect to Supabase:', error);
+    console.log('   Falling back to local database mode');
+  }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-console.log('📦 Connected to Supabase');
+export { supabase, supabaseAvailable };
 
 // Database initialization function for Supabase
 export const initSupabaseDatabase = async (): Promise<void> => {
+  if (!supabaseAvailable || !supabase) {
+    console.log('⚠️  Supabase not available - skipping database initialization');
+    console.log('   Backend will run with limited functionality');
+    return;
+  }
+
   try {
-    // Test connection
-    const { data, error } = await supabase.from('settings').select('count').limit(1);
+    // Test connection with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const { data, error } = await supabase
+      .from('settings')
+      .select('count')
+      .limit(1)
+      .abortSignal(controller.signal);
+      
+    clearTimeout(timeoutId);
+    
     if (error) {
       throw new Error(`Failed to connect to Supabase: ${error.message}`);
     }
@@ -31,7 +65,9 @@ export const initSupabaseDatabase = async (): Promise<void> => {
     
   } catch (error) {
     console.error('❌ Error initializing Supabase database:', error);
-    throw error;
+    console.log('   This might be due to network connectivity issues');
+    console.log('   Backend will continue with limited functionality');
+    // Don't throw error - allow backend to start anyway
   }
 };
 

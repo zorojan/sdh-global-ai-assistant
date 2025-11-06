@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 
 :: === Settings ===
 set "PORT=3001"
-set "APP_DIR=c:\sdh\fsm\sdh-global-ai-assistant\backend"
+set "APP_DIR=f:\app\fsm\sdh-global-ai-assistant\backend"
 
 echo [1/4] Checking if port %PORT% is in use...
 

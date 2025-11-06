@@ -52,7 +52,7 @@ router.get('/diagnostics', async (req: any, res: express.Response) => {
 
     // Filter out sensitive data
     const sensitiveKeys = ['gemini_api_key', 'openai_api_key', 'admin_password'];
-    const settings = allSettings?.filter(setting => !sensitiveKeys.includes(setting.key)) || [];
+    const settings = allSettings?.filter((setting: any) => !sensitiveKeys.includes(setting.key)) || [];
 
     console.log('🔒 Filtered to safe settings:', settings.length);
 
@@ -84,7 +84,7 @@ router.get('/', authenticateToken, async (req: any, res: express.Response) => {
     }
 
     // Don't send password values in response for security
-    const safeSettings = settings.map(setting => ({
+    const safeSettings = settings.map((setting: any) => ({
       ...setting,
       value: setting.type === 'password' && setting.value ? '***hidden***' : setting.value
     }));

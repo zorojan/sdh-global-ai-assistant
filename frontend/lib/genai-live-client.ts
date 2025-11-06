@@ -65,6 +65,8 @@ export interface LiveClientEventTypes {
   ) => void;
   // Emitted when the current turn is complete
   turncomplete: () => void;
+  // Emitted when usage metadata is received (tokens, modality breakdown)
+  usage: (usageMetadata: any) => void;
 }
 
 export class GenAILiveClient {
@@ -209,6 +211,27 @@ export class GenAILiveClient {
   }
 
   protected onMessage(message: LiveServerMessage) {
+    // store raw incoming messages for debugging (window.__GENAI_RAW__)
+    try {
+      const gw = globalThis as any;
+      gw.__GENAI_RAW__ = gw.__GENAI_RAW__ || [];
+      gw.__GENAI_RAW__.push(message);
+      if (gw.__GENAI_RAW__.length > 1000) gw.__GENAI_RAW__.splice(0, gw.__GENAI_RAW__.length - 1000);
+    } catch (err) {
+      // ignore
+    }
+
+    // If the server provided usage metadata at the message level, emit it for UI
+    try {
+      const anyMsg = message as any;
+      const usage = anyMsg.usageMetadata || anyMsg.serverContent?.usageMetadata;
+      if (usage) {
+        this.log('server.usage', usage);
+        this.emit('usage', usage);
+      }
+    } catch (err) {
+      // ignore
+    }
     if (message.setupComplete) {
       this.emit('setupcomplete');
       return;
@@ -262,7 +285,12 @@ export class GenAILiveClient {
         this.emit('content', content);
         this.log(`server.content`, message);
       } else {
-        console.log('received unmatched message', message);
+        // Message contains serverContent but no modelTurn (e.g. only turnComplete or usageMetadata).
+        // These are valid lifecycle messages (usage, end-of-turn) and should not be treated as errors.
+        this.log('server.nocontent', message);
+        // emit a lightweight content event so UI can react if needed (no parts)
+        this.emit('content', { serverContent: { parts: [] } } as any);
+        return;
       }
     }
   }
@@ -305,10 +333,42 @@ export class GenAILiveClient {
    * @param message - Log message
    */
   protected log(type: string, message: string | object) {
-    this.emit('log', {
+    const entry = {
       type,
       message,
       date: new Date(),
-    });
+    };
+
+    // Emit to any listeners
+    this.emit('log', entry as any);
+
+    // Also write to a global in-browser log for easier debugging in the frontend
+    try {
+  // @ts-ignore - attach to window for debugging
+  const gw = (globalThis as any);
+  gw.__GENAI_LOGS__ = gw.__GENAI_LOGS__ || [];
+  const g = gw.__GENAI_LOGS__;
+      g.push(entry);
+      // keep logs bounded
+      if (g.length > 1000) g.splice(0, g.length - 1000);
+
+      // persist a lightweight copy to localStorage so logs survive page reloads
+      try {
+        const light = g.slice(-500).map((e: any) => ({ t: e.type, d: e.date, m: typeof e.message === 'string' ? e.message : JSON.stringify(e.message) }));
+        localStorage.setItem('genai_logs', JSON.stringify(light));
+      } catch (err) {
+        // ignore localStorage errors (e.g., in private mode)
+      }
+    } catch (err) {
+      // ignore any errors while writing logs
+    }
+
+    // Also mirror to console for immediate visibility
+    try {
+      // eslint-disable-next-line no-console
+      console.debug('[GenAI Log]', entry.type, entry.message);
+    } catch (err) {
+      // noop
+    }
   }
 }
