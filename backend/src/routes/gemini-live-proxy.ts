@@ -184,13 +184,29 @@ router.post('/send', async (req: Request, res: Response) => {
       }
     );
 
-    const result = (await response.json()) as any;
+    console.log('🎙️ Gemini Live Proxy: Google API response status:', response.status);
+
+    let result: any;
+    try {
+      const text = await response.text();
+      console.log('🎙️ Gemini Live Proxy: Response text length:', text.length);
+      
+      if (text && text.trim()) {
+        result = JSON.parse(text);
+      } else {
+        result = { error: 'Empty response from Google API' };
+      }
+    } catch (parseError) {
+      console.error('🎙️ Gemini Live Proxy: Failed to parse response:', parseError);
+      result = { error: 'Failed to parse API response', parseError };
+    }
 
     if (!response.ok) {
       console.error('🎙️ Gemini Live Proxy: API error:', result);
       return res.status(response.status).json({
-        error: result.error?.message || 'Gemini API error',
-        details: result.error
+        error: result.error?.message || result.error || 'Gemini API error',
+        details: result.error,
+        status: response.status
       });
     }
 
@@ -215,7 +231,7 @@ router.post('/send', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      text: textResponse || '',
+      text: textResponse || '(no response)',
       audio: audioResponse || null,
       timestamp: new Date().toISOString()
     });
