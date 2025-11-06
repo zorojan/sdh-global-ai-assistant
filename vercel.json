@@ -1,7 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "cd frontend && npm ci --prefer-offline && npm run build",
-  "outputDirectory": "frontend/dist",
   "builds": [
     {
       "src": "api/index.ts",
