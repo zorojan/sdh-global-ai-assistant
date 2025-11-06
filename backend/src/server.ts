@@ -2,11 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { initDatabase, getDatabase } from './database/init';
+import { supabase, initSupabaseDatabase } from './database/supabase';
 import settingsRoutes from './routes/settings';
 import agentsRoutes from './routes/agents';
 import authRoutes from './routes/auth';
 import realtimeRoutes from './routes/realtime';
+import validationRoutes from './routes/validation';
 
 dotenv.config();
 
@@ -31,18 +32,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api', validationRoutes);
 
 // Public endpoint for API key (needed by frontend)
 app.get('/api/public/apikey', async (req, res) => {
   try {
-    const { promisify } = require('util');
-    
-    const db = getDatabase();
-    const get = promisify(db.get.bind(db)) as any;
+    const { data: setting, error } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'gemini_api_key')
+      .single();
 
-    const setting = await get('SELECT value FROM settings WHERE key = ?', ['gemini_api_key']) as any;
-
-    if (!setting || !setting.value) {
+    if (error || !setting?.value) {
       return res.status(404).json({ error: 'API key not configured' });
     }
 
@@ -56,14 +57,16 @@ app.get('/api/public/apikey', async (req, res) => {
 // Public endpoint for agents (needed by frontend)
 app.get('/api/public/agents', async (req, res) => {
   try {
-    const { promisify } = require('util');
-    
-    const db = getDatabase();
-    const all = promisify(db.all.bind(db)) as any;
+    const { data: agents, error } = await supabase
+      .from('agents')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    const agents = await all('SELECT * FROM agents ORDER BY created_at DESC') as any[];
+    if (error) {
+      throw error;
+    }
 
-    res.json(agents);
+    res.json(agents || []);
   } catch (error) {
     console.error('Get agents error:', error);
     res.status(500).json({ error: 'Failed to fetch agents' });
@@ -73,19 +76,17 @@ app.get('/api/public/agents', async (req, res) => {
 // Public endpoint for basic settings (needed by frontend)
 app.get('/api/public/settings', async (req, res) => {
   try {
-    const { promisify } = require('util');
-    
-    const db = getDatabase();
-    const all = promisify(db.all.bind(db)) as any;
-
     // Only return non-sensitive settings
-    const publicSettings = await all(`
-      SELECT key, value 
-      FROM settings 
-      WHERE key IN ('ai_provider', 'enable_audio', 'max_conversation_length')
-    `) as any[];
+    const { data: publicSettings, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['ai_provider', 'enable_audio', 'max_conversation_length']);
 
-    res.json(publicSettings);
+    if (error) {
+      throw error;
+    }
+
+    res.json(publicSettings || []);
   } catch (error) {
     console.error('Get public settings error:', error);
     res.status(500).json({ error: 'Failed to fetch settings' });
@@ -101,14 +102,15 @@ app.get('/api/health', (req, res) => {
 app.get('/widget.js', async (req, res) => {
   try {
     // Read ai_provider from DB so widget iframe can receive it as a param
-    const { promisify } = require('util');
-    const db = getDatabase();
-    const get = promisify(db.get.bind(db)) as any;
-
     let aiProviderValue = 'gemini';
     try {
-      const row = await get('SELECT value FROM settings WHERE key = ?', ['ai_provider']);
-      if (row && row.value) aiProviderValue = row.value;
+      const { data: setting } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'ai_provider')
+        .single();
+      
+      if (setting?.value) aiProviderValue = setting.value;
     } catch (err) {
       // ignore and fallback to gemini
       console.warn('Could not read ai_provider from DB, defaulting to gemini', err);
@@ -180,13 +182,14 @@ app.use('*', (req, res) => {
 });
 
 // Initialize database and start server
-initDatabase().then(() => {
+initSupabaseDatabase().then(() => {
   app.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🗄️ Connected to Supabase database`);
   });
 }).catch((error: any) => {
-  console.error('Failed to initialize database:', error);
+  console.error('Failed to initialize Supabase database:', error);
   process.exit(1);
 });
 

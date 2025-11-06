@@ -1,4 +1,4 @@
-﻿import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../database/supabase';
@@ -6,15 +6,15 @@ import { supabase } from '../database/supabase';
 const router = express.Router();
 
 // Login endpoint
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body as { username?: string; password?: string };
+    const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
     }
 
-    // Find admin user in Supabase
+    // Find admin user
     const { data: user, error: userError } = await supabase
       .from('admin_users')
       .select('*')
@@ -32,14 +32,14 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Update last_login (best-effort)
-    try {
-      await supabase
-        .from('admin_users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', user.id);
-    } catch (e) {
-      console.warn('Failed to update last_login:', e);
+    // Update last login
+    const { error: updateError } = await supabase
+      .from('admin_users')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('Error updating last login:', updateError);
     }
 
     // Generate JWT token
@@ -58,45 +58,33 @@ router.post('/login', async (req: Request, res: Response) => {
         email: user.email
       }
     });
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Verify token middleware (named export)
-export const authenticateToken = (req: Request & { user?: any }, res: Response, next: NextFunction) => {
-  const authHeader = req.headers['authorization'] as string | undefined;
-  const token = authHeader ? authHeader.split(' ')[1] : null;
+// Verify token middleware
+export const authenticateToken = (req: any, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret', async (err: any, decoded: any) => {
+  jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret', (err: any, user: any) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
-
-    // Attach decoded token to request
-    req.user = decoded;
-
-    // Update last_login asynchronously (best-effort)
-    try {
-      await supabase
-        .from('admin_users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', decoded?.userId);
-    } catch (e) {
-      console.warn('Failed to update last_login in middleware:', e);
-    }
-
+    req.user = user;
     next();
   });
 };
 
 // Verify token endpoint
-router.get('/verify', authenticateToken, (req: any, res: Response) => {
+router.get('/verify', authenticateToken, (req: any, res) => {
   res.json({ valid: true, user: req.user });
 });
 

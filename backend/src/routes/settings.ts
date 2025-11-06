@@ -1,17 +1,20 @@
 import express from 'express';
-import { getDatabase } from '../database/init';
+import { supabase } from '../database/supabase';
 import { authenticateToken } from './auth';
-import { promisify } from 'util';
 
 const router = express.Router();
 
 // Get all settings
 router.get('/', authenticateToken, async (req: any, res: express.Response) => {
   try {
-    const db = getDatabase();
-    const all = promisify(db.all.bind(db)) as any;
+    const { data: settings, error } = await supabase
+      .from('settings')
+      .select('*')
+      .order('key');
 
-    const settings = await all('SELECT * FROM settings ORDER BY key') as any[];
+    if (error) {
+      throw error;
+    }
 
     // Don't send password values in response for security
     const safeSettings = settings.map(setting => ({
@@ -30,13 +33,18 @@ router.get('/', authenticateToken, async (req: any, res: express.Response) => {
 router.get('/:key', authenticateToken, async (req: any, res: express.Response) => {
   try {
     const { key } = req.params;
-    const db = getDatabase();
-    const get = promisify(db.get.bind(db)) as any;
 
-    const setting = await get('SELECT * FROM settings WHERE key = ?', [key]) as any;
+    const { data: setting, error } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('key', key)
+      .single();
 
-    if (!setting) {
-      return res.status(404).json({ error: 'Setting not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Setting not found' });
+      }
+      throw error;
     }
 
     // Don't send password values
@@ -61,21 +69,32 @@ router.put('/:key', authenticateToken, async (req: any, res: express.Response) =
       return res.status(400).json({ error: 'Value is required' });
     }
 
-    const db = getDatabase();
-    const run = promisify(db.run.bind(db)) as any;
-    const get = promisify(db.get.bind(db)) as any;
-
     // Check if setting exists
-    const existing = await get('SELECT * FROM settings WHERE key = ?', [key]) as any;
-    if (!existing) {
-      return res.status(404).json({ error: 'Setting not found' });
+    const { data: existing, error: checkError } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('key', key)
+      .single();
+
+    if (checkError) {
+      if (checkError.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Setting not found' });
+      }
+      throw checkError;
     }
 
     // Update setting
-    await run(
-      'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?',
-      [value, key]
-    );
+    const { error: updateError } = await supabase
+      .from('settings')
+      .update({ 
+        value: value,
+        updated_at: new Date().toISOString()
+      })
+      .eq('key', key);
+
+    if (updateError) {
+      throw updateError;
+    }
 
     res.json({ success: true, message: 'Setting updated successfully' });
   } catch (error) {
@@ -93,21 +112,30 @@ router.post('/', authenticateToken, async (req: any, res: express.Response) => {
       return res.status(400).json({ error: 'Key and value are required' });
     }
 
-    const db = getDatabase();
-    const run = promisify(db.run.bind(db)) as any;
-    const get = promisify(db.get.bind(db)) as any;
-
     // Check if setting already exists
-    const existing = await get('SELECT * FROM settings WHERE key = ?', [key]) as any;
+    const { data: existing } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('key', key)
+      .single();
+
     if (existing) {
       return res.status(409).json({ error: 'Setting already exists' });
     }
 
     // Create setting
-    await run(
-      'INSERT INTO settings (key, value, description, type) VALUES (?, ?, ?, ?)',
-      [key, value, description, type]
-    );
+    const { error } = await supabase
+      .from('settings')
+      .insert({
+        key,
+        value,
+        description,
+        type
+      });
+
+    if (error) {
+      throw error;
+    }
 
     res.status(201).json({ success: true, message: 'Setting created successfully' });
   } catch (error) {
@@ -120,10 +148,15 @@ router.post('/', authenticateToken, async (req: any, res: express.Response) => {
 router.delete('/:key', authenticateToken, async (req: any, res: express.Response) => {
   try {
     const { key } = req.params;
-    const db = getDatabase();
-    const run = promisify(db.run.bind(db)) as any;
 
-    await run('DELETE FROM settings WHERE key = ?', [key]);
+    const { error } = await supabase
+      .from('settings')
+      .delete()
+      .eq('key', key);
+
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, message: 'Setting deleted successfully' });
   } catch (error) {
