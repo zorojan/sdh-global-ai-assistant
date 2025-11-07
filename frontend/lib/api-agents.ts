@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { Agent } from './presets/agents';
+import { convertApiAgentToLocal } from './agent-adapter';
+import { Agent as ApiAgent } from './api-client';
 
 // API клиент
 const API_BASE_URL = 'http://localhost:3001/api';
@@ -7,28 +9,58 @@ const API_BASE_URL = 'http://localhost:3001/api';
 // Функция для получения агентов из API
 async function fetchAgentsFromAPI(): Promise<Agent[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/agents`);
+    const response = await fetch(`${API_BASE_URL}/public/agents`);
     if (!response.ok) throw new Error('Failed to fetch agents');
     
-    const apiAgents = await response.json();
+    const apiAgents: ApiAgent[] = await response.json();
     
     // Преобразуем данные из API в формат, который ожидает приложение
     return apiAgents
-      .filter((agent: any) => agent.is_active) // Только активные агенты
-      .map((agent: any) => ({
-        id: agent.id,
-        name: agent.name,
-        personality: agent.personality,
-        bodyColor: agent.body_color,
-        voice: agent.voice,
-        avatarUrl: agent.avatar_url || ''
-      }));
+      .filter((agent: ApiAgent) => agent.is_active) // Только активные агенты
+      .map(convertApiAgentToLocal);
   } catch (error) {
     console.error('Error fetching agents from API:', error);
+    throw error; // No fallback to static agents - force database setup
+  }
+}
+
+// 🎯 НОВАЯ ФУНКЦИЯ - Получить полную конфигурацию для Gemini Live API
+export interface LiveApiConfig {
+  connectionConfig: {
+    model: string;
+    config: {
+      responseModalities: string[];
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: {
+            voiceName: string;
+          };
+        };
+      };
+      inputAudioTranscription?: {};
+      outputAudioTranscription?: {};
+      systemInstruction: string;
+    };
+  };
+  agentInfo: {
+    id: string;
+    name: string;
+    personality: string;
+    language: string;
+    voice: string;
+    voice_language: string;
+  };
+}
+
+export async function fetchLiveApiConfig(agentId: string): Promise<LiveApiConfig> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/public/config/live-connection/${agentId}`);
+    if (!response.ok) throw new Error('Failed to fetch Live API config');
     
-    // Fallback к статическим агентам при ошибке
-    const { StartupConsultant, AIAdvisor, TechnicalArchitect, DevOpsSpecialist } = await import('./presets/agents');
-    return [StartupConsultant, AIAdvisor, TechnicalArchitect, DevOpsSpecialist];
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching Live API config:', error);
+    throw error;
   }
 }
 

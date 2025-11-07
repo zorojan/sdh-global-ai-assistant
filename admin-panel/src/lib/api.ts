@@ -102,6 +102,9 @@ export const agentsAPI = {
     avatar_url?: string
     knowledge_base?: string
     system_prompt?: string
+    language?: string
+    voice_language?: string
+    voice_characteristics?: string
   }) => {
     const response = await api.post('/agents', agent)
     return response.data
@@ -114,6 +117,27 @@ export const agentsAPI = {
   
   delete: async (id: string) => {
     const response = await api.delete(`/agents/${id}`)
+    return response.data
+  },
+
+  // New database-driven endpoints
+  getColors: async () => {
+    const response = await api.get('/agents/colors')
+    return response.data
+  },
+
+  getVoices: async () => {
+    const response = await api.get('/agents/voices')
+    return response.data
+  },
+
+  getSystemPrompts: async () => {
+    const response = await api.get('/agents/prompts')
+    return response.data
+  },
+
+  getSystemPromptsByCategory: async (category: string) => {
+    const response = await api.get(`/agents/prompts/${category}`)
     return response.data
   }
 }

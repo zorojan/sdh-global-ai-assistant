@@ -44,38 +44,5 @@ export const createNewAgent = (properties?: Partial<Agent>): Agent => {
   };
 };
 
-export const StartupConsultant: Agent = {
-  id: 'startup-consultant',
-  name: 'Startup Consultant',
-  personality:
-    'An expert in business strategy, product-market fit, and fundraising. I can help you refine your startup idea, develop a business plan, and navigate the challenges of building a successful company from the ground up.',
-  bodyColor: '#9CCF31',
-  voice: 'Orus',
-};
-
-export const AIAdvisor: Agent = {
-  id: 'ai-advisor',
-  name: 'AI Advisor',
-  personality:
-    'A specialist in artificial intelligence and machine learning. I can guide you on integrating AI into your application, choosing the right models, and building intelligent features to give your product a competitive edge.',
-  bodyColor: '#ced4da',
-  voice: 'Aoede',
-};
-
-export const TechnicalArchitect: Agent = {
-  id: 'technical-architect',
-  name: 'Technical Architect',
-  personality:
-    'A senior software architect with deep expertise in system design, scalability, and technology stacks. I can help you design a robust and scalable architecture for your application, choose the right technologies, and ensure a solid technical foundation.',
-  bodyColor: '#adb5bd',
-  voice: 'Charon',
-};
-
-export const DevOpsSpecialist: Agent = {
-  id: 'devops-specialist',
-  name: 'DevOps Specialist',
-  personality:
-    'A DevOps and cloud infrastructure expert. I can advise on best practices for continuous integration, continuous deployment (CI/CD), cloud hosting, and ensuring your application is reliable, scalable, and secure.',
-  bodyColor: '#6c757d',
-  voice: 'Puck',
-};
+// Static agents removed - all agents now loaded from database
+// Previously: StartupConsultant, AIAdvisor, TechnicalArchitect, DevOpsSpecialist

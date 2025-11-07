@@ -11,6 +11,7 @@ import realtimeRoutes from './routes/realtime';
 import validationRoutes from './routes/validation';
 import geminiAudioRoutes from './routes/gemini-audio';
 import geminiLiveProxyRoutes, { activeSessions } from './routes/gemini-live-proxy';
+import configRoutes from './routes/config';
 
 dotenv.config();
 
@@ -86,6 +87,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/config', configRoutes);
 app.use('/api/gemini/audio', geminiAudioRoutes);
 app.use('/api/gemini/live', geminiLiveProxyRoutes);
 app.use('/api', validationRoutes);
@@ -146,6 +148,119 @@ app.get('/api/public/settings', async (req, res) => {
   } catch (error) {
     console.error('Get public settings error:', error);
     res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+// Public endpoint for Live API config (needed by frontend)
+app.get('/api/public/config/live-connection/:agentId', async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    // Get agent data
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', agentId)
+      .eq('is_active', true)
+      .single();
+
+    if (agentError || !agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    // Get Live API settings
+    const { data: settings, error: settingsError } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', [
+        'gemini_live_model',
+        'gemini_live_response_modalities', 
+        'gemini_live_input_transcription',
+        'gemini_live_output_transcription',
+        'default_system_instruction_prefix'
+      ]);
+
+    if (settingsError) {
+      console.error('Settings error:', settingsError);
+      return res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+
+    // Build settings object
+    const settingsObj: any = {};
+    settings?.forEach((setting: any) => {
+      let value = setting.value;
+      if (setting.key === 'gemini_live_response_modalities') {
+        try {
+          value = JSON.parse(value);
+        } catch (e) {
+          value = ['AUDIO'];
+        }
+      }
+      if (setting.key.includes('transcription')) {
+        value = value === 'true';
+      }
+      settingsObj[setting.key] = value;
+    });
+
+    // Build system instruction
+    const baseInstruction = agent.system_prompt || agent.personality || 'You are a helpful AI assistant.';
+    const prefix = settingsObj.default_system_instruction_prefix || 'You are a conversational AI. Your tone should be բարյացակամ. You should express ուրախ.';
+    
+    const language = agent.language || agent.voice_language || 'hy-AM';
+    let languageInstruction = '';
+    
+    switch (language) {
+      case 'hy-AM':
+        languageInstruction = 'Start the conversation immediately with a short welcome message in Armenian without waiting for the user to speak first. All your subsequent responses must be in Armenian.';
+        break;
+      case 'ru-RU':
+        languageInstruction = 'Start the conversation immediately with a short welcome message in Russian without waiting for the user to speak first. All your subsequent responses must be in Russian.';
+        break;
+      case 'en-US':
+      default:
+        languageInstruction = 'Start the conversation immediately with a short welcome message in English without waiting for the user to speak first. All your subsequent responses must be in English.';
+        break;
+    }
+
+    const systemInstruction = `${prefix} ${baseInstruction} ${languageInstruction}`;
+
+    // Build full connectionConfig
+    const connectionConfig = {
+      model: settingsObj.gemini_live_model || 'gemini-2.5-flash-native-audio-preview-09-2025',
+      config: {
+        responseModalities: settingsObj.gemini_live_response_modalities || ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: agent.voice || 'Orus'
+            }
+          }
+        },
+        ...(settingsObj.gemini_live_input_transcription && {
+          inputAudioTranscription: {}
+        }),
+        ...(settingsObj.gemini_live_output_transcription && {
+          outputAudioTranscription: {}
+        }),
+        systemInstruction
+      }
+    };
+
+    res.json({
+      connectionConfig,
+      agentInfo: {
+        id: agent.id,
+        name: agent.name,
+        personality: agent.personality,
+        language: agent.language,
+        voice: agent.voice,
+        voice_language: agent.voice_language
+      }
+    });
+
+  } catch (error) {
+    console.error('Public Live config error:', error);
+    res.status(500).json({ error: 'Failed to build Live API configuration' });
   }
 });
 

@@ -3,13 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { create } from 'zustand';
-import {
-  Agent,
-  StartupConsultant,
-  AIAdvisor,
-  TechnicalArchitect,
-  DevOpsSpecialist,
-} from './presets/agents';
+import { Agent } from './presets/agents';
 
 /**
  * User

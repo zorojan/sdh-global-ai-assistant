@@ -28,6 +28,32 @@ export interface Agent {
   updated_at: string
 }
 
+export interface AgentColor {
+  id: string
+  hex_code: string
+  name: string
+  is_default: boolean
+}
+
+export interface VoiceProfile {
+  id: string
+  name: string
+  style?: string
+  gender?: string
+  language: string
+  is_active: boolean
+}
+
+export interface SystemPrompt {
+  id: string
+  name: string
+  content: string
+  category: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Setting {
   key: string
   value: string
@@ -46,6 +72,30 @@ export const api = {
   // Get specific agent by ID
   getAgent: async (id: string): Promise<Agent> => {
     const response = await apiClient.get(`/agents/${id}`)
+    return response.data
+  },
+
+  // Get available agent colors
+  getAgentColors: async (): Promise<AgentColor[]> => {
+    const response = await apiClient.get('/agents/colors')
+    return response.data
+  },
+
+  // Get available voice profiles
+  getVoiceProfiles: async (): Promise<VoiceProfile[]> => {
+    const response = await apiClient.get('/agents/voices')
+    return response.data
+  },
+
+  // Get system prompts
+  getSystemPrompts: async (): Promise<SystemPrompt[]> => {
+    const response = await apiClient.get('/agents/prompts')
+    return response.data
+  },
+
+  // Get system prompts by category
+  getSystemPromptsByCategory: async (category: string): Promise<SystemPrompt[]> => {
+    const response = await apiClient.get(`/agents/prompts/${category}`)
     return response.data
   },
 

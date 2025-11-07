@@ -103,29 +103,54 @@ router.get('/live-api-config', async (req: any, res: express.Response) => {
       config[setting.key] = setting.value;
     });
 
-    // Build the Live API configuration object
+    // Helper functions for normalization
+    const normalizeResponseModalities = (value: any): string[] => {
+      if (Array.isArray(value)) return value;
+      if (typeof value === 'string') {
+        if (value.includes('+')) {
+          return value.split('+').map(s => s.trim());
+        }
+        return [value];
+      }
+      return ['AUDIO']; // Default
+    };
+
+    const normalizeVoiceName = (value: any): string => {
+      const validVoices = [
+        'Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus', 'Aoede',
+        'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus', 'Umbriel', 'Algieba', 'Despina'
+      ];
+      return validVoices.includes(value) ? value : 'Zephyr'; // Default
+    };
+
+    const normalizeTranscription = (value: any): {} | undefined => {
+      return (value === 'true' || value === true) ? {} : undefined;
+    };
+
+    const normalizeTemperature = (value: any): number => {
+      const num = parseFloat(value);
+      return (isNaN(num) || num < 0 || num > 2) ? 0.8 : num; // Default 0.8, range 0-2
+    };
+
+    // Build the Live API configuration object with normalized values
     const liveApiConfig = {
       model: config.live_api_model || 'gemini-2.5-flash-native-audio-preview-09-2025',
       config: {
-        responseModalities: config.live_api_response_modalities === 'AUDIO+TEXT'
-          ? ['AUDIO', 'TEXT']
-          : config.live_api_response_modalities === 'TEXT'
-            ? ['TEXT']
-            : ['AUDIO'], // Default to AUDIO only
+        responseModalities: normalizeResponseModalities(config.live_api_response_modalities),
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName: config.live_api_voice_name || 'Zephyr'
+              voiceName: normalizeVoiceName(config.live_api_voice_name)
             }
           }
         },
-        ...(config.live_api_enable_input_transcription === 'true' && {
+        ...(normalizeTranscription(config.live_api_enable_input_transcription) && {
           inputAudioTranscription: {}
         }),
-        ...(config.live_api_enable_output_transcription === 'true' && {
+        ...(normalizeTranscription(config.live_api_enable_output_transcription) && {
           outputAudioTranscription: {}
         }),
-        temperature: parseFloat(config.live_api_temperature) || 0.8,
+        temperature: normalizeTemperature(config.live_api_temperature),
         systemInstruction: {
           parts: [
             {
@@ -136,7 +161,7 @@ router.get('/live-api-config', async (req: any, res: express.Response) => {
       }
     };
 
-    console.log('✅ Live API configuration prepared');
+    console.log('✅ Live API configuration prepared with normalized values');
     res.json(liveApiConfig);
   } catch (error) {
     console.error('❌ Get Live API config error:', error);

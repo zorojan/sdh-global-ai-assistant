@@ -124,6 +124,88 @@ router.get('/', async (req: any, res: express.Response) => {
   }
 });
 
+// Get available agent colors
+router.get('/colors', async (req: any, res: express.Response) => {
+  try {
+    const { data: colors, error } = await supabase
+      .from('agent_colors')
+      .select('*')
+      .order('name');
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(colors || []);
+  } catch (error) {
+    console.error('Get agent colors error:', error);
+    res.status(500).json({ error: 'Failed to fetch agent colors' });
+  }
+});
+
+// Get available voice profiles
+router.get('/voices', async (req: any, res: express.Response) => {
+  try {
+    const { data: voices, error } = await supabase
+      .from('voice_profiles')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(voices || []);
+  } catch (error) {
+    console.error('Get voice profiles error:', error);
+    res.status(500).json({ error: 'Failed to fetch voice profiles' });
+  }
+});
+
+// Get system prompts
+router.get('/prompts', async (req: any, res: express.Response) => {
+  try {
+    const { data: prompts, error } = await supabase
+      .from('system_prompts')
+      .select('*')
+      .eq('is_active', true)
+      .order('category', 'name');
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(prompts || []);
+  } catch (error) {
+    console.error('Get system prompts error:', error);
+    res.status(500).json({ error: 'Failed to fetch system prompts' });
+  }
+});
+
+// Get system prompts by category
+router.get('/prompts/:category', async (req: any, res: express.Response) => {
+  try {
+    const { category } = req.params;
+
+    const { data: prompts, error } = await supabase
+      .from('system_prompts')
+      .select('*')
+      .eq('category', category)
+      .eq('is_active', true)
+      .order('name');
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(prompts || []);
+  } catch (error) {
+    console.error('Get system prompts by category error:', error);
+    res.status(500).json({ error: 'Failed to fetch system prompts' });
+  }
+});
+
 // Get specific agent
 router.get('/:id', async (req: any, res: express.Response) => {
   try {

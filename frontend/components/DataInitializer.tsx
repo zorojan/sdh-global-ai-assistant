@@ -7,7 +7,8 @@ interface DataInitializerProps {
 }
 
 export default function DataInitializer({ children }: DataInitializerProps) {
-  const { agents, loadAgents, loading, error, current, setCurrent } = useApiAgents();
+  const { agents, loadAgents, loading, error } = useApiAgents();
+  const setAvailableAgents = useAgent(state => state.setAvailableAgents);
   
   // Загружаем агентов при монтировании компонента
   useEffect(() => {
@@ -16,17 +17,11 @@ export default function DataInitializer({ children }: DataInitializerProps) {
   
   // Синхронизируем с основным state
   useEffect(() => {
-    if (agents.length > 0 && current) {
+    if (agents.length > 0) {
       // Обновляем основной store с данными из API
-      const { update } = useAgent.getState();
-      
-      // Устанавливаем текущего агента в основной store
-      useAgent.setState({ 
-        availablePersonal: agents,
-        current: current
-      });
+      setAvailableAgents(agents);
     }
-  }, [agents, current]);
+  }, [agents, setAvailableAgents]);
 
   if (loading) {
     return (

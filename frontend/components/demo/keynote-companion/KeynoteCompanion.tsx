@@ -16,50 +16,40 @@ export default function KeynoteCompanion() {
   const user = useUser();
   const { current } = useAgent();
   const [configLoaded, setConfigLoaded] = useState(false);
+  // Keep last applied agent id to avoid duplicate reloads
+  const lastAgentIdRef = useRef<string | null>(null);
 
   // Function to fetch Live API configuration from database
   const fetchLiveApiConfig = async () => {
     try {
       console.log(`🎵 [Agent: ${current.name}] Fetching Live API configuration from database...`);
 
-      // First, let's fetch raw settings from database to see what's actually stored
-      const diagnosticsResponse = await fetch('http://localhost:3001/api/settings/diagnostics');
-      if (diagnosticsResponse.ok) {
-        const diagnosticsData = await diagnosticsResponse.json();
-        console.log(`📊 [Agent: ${current.name}] Raw database settings:`, {
-          live_api_model: diagnosticsData.live_api_model,
-          live_api_response_modalities: diagnosticsData.live_api_response_modalities,
-          live_api_voice_name: diagnosticsData.live_api_voice_name,
-          live_api_enable_input_transcription: diagnosticsData.live_api_enable_input_transcription,
-          live_api_enable_output_transcription: diagnosticsData.live_api_enable_output_transcription,
-          live_api_temperature: diagnosticsData.live_api_temperature,
-          live_api_system_instruction: diagnosticsData.live_api_system_instruction?.substring(0, 100) + '...'
-        });
-      }
-
-      const response = await fetch('http://localhost:3001/api/settings/live-api-config');
+      // 🎯 НОВЫЙ ПОДХОД: Использовать новый endpoint для полной синхронизации
+      const response = await fetch(`http://localhost:3001/api/public/config/live-connection/${current.id}`);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch Live API config: ${response.status}`);
       }
 
-      const liveApiConfig = await response.json();
+      const { connectionConfig, agentInfo } = await response.json();
+      
       console.log(`✅ [Agent: ${current.name}] Live API configuration loaded from database:`, {
-        model: liveApiConfig.model,
-        responseModalities: liveApiConfig.config?.responseModalities,
-        voiceName: liveApiConfig.config?.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName,
-        inputTranscription: !!liveApiConfig.config?.inputAudioTranscription,
-        outputTranscription: !!liveApiConfig.config?.outputAudioTranscription,
-        temperature: liveApiConfig.config?.temperature,
-        systemInstructionLength: liveApiConfig.config?.systemInstruction?.parts?.[0]?.text?.length || 0,
-        systemInstructionPreview: liveApiConfig.config?.systemInstruction?.parts?.[0]?.text?.substring(0, 100) + '...'
+        model: connectionConfig.model,
+        responseModalities: connectionConfig.config?.responseModalities,
+        voiceName: connectionConfig.config?.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName,
+        inputTranscription: !!connectionConfig.config?.inputAudioTranscription,
+        outputTranscription: !!connectionConfig.config?.outputAudioTranscription,
+        systemInstructionLength: connectionConfig.config?.systemInstruction?.length || 0,
+        systemInstructionPreview: connectionConfig.config?.systemInstruction?.substring(0, 100) + '...',
+        agentLanguage: agentInfo.language,
+        agentVoiceLanguage: agentInfo.voice_language
       });
 
       // Set the configuration in the Live API context
-      setConfig(liveApiConfig.config);
+      setConfig(connectionConfig.config);
       setConfigLoaded(true);
 
-      console.log(`🎯 [Agent: ${current.name}] Configuration applied successfully`);
+      console.log(`🎯 [Agent: ${current.name}] Configuration applied successfully - данные синхронизированы с базой данных!`);
 
     } catch (error) {
       console.error(`❌ [Agent: ${current.name}] Error fetching Live API configuration:`, error);
@@ -71,20 +61,13 @@ export default function KeynoteCompanion() {
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName: "Zephyr"
+              voiceName: "Orus" // Используем Orus как default из базы данных
             }
           }
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        systemInstruction: {
-          parts: [
-            {
-              text: `You are a conversational AI. Your tone should be բարյացակամ. You should express ուրախ. Start the conversation immediately with a short welcome message in Armenian without waiting for the user to speak first. All your subsequent responses must be in Armenian.`
-            }
-          ]
-        },
-        temperature: 0.8
+        systemInstruction: `You are a conversational AI. Your tone should be բարյացակամ. You should express ուրախ. ${current.personality} Start the conversation immediately with a short welcome message in Armenian without waiting for the user to speak first. All your subsequent responses must be in Armenian.`
       };
 
       console.log(`⚠️ [Agent: ${current.name}] Applying fallback config:`, {
@@ -92,8 +75,7 @@ export default function KeynoteCompanion() {
         voiceName: fallbackConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName,
         inputTranscription: !!fallbackConfig.inputAudioTranscription,
         outputTranscription: !!fallbackConfig.outputAudioTranscription,
-        temperature: fallbackConfig.temperature,
-        systemInstructionPreview: fallbackConfig.systemInstruction.parts[0].text.substring(0, 100) + '...'
+        systemInstructionPreview: fallbackConfig.systemInstruction.substring(0, 100) + '...'
       });
 
       setConfig(fallbackConfig);
@@ -102,7 +84,20 @@ export default function KeynoteCompanion() {
   };
 
   // Load Live API configuration on component mount and when agent changes
+  // Guard against the placeholder 'loading' agent and duplicate reloads
   useEffect(() => {
+    // Skip reload for placeholder agent id or undefined
+    if (!current?.id || current.id === 'loading' || current.id === 'default') {
+      console.debug(`🔕 Skipping config reload for placeholder agent id='${current?.id}'`);
+      return;
+    }
+
+    // If agent hasn't changed, skip
+    if (lastAgentIdRef.current === current.id) {
+      console.debug(`🔕 Agent '${current.name}' (${current.id}) already applied — skipping reload`);
+      return;
+    }
+
     console.log('🎭 Agent changed - Current agent:', {
       id: current.id,
       name: current.name,
@@ -114,8 +109,9 @@ export default function KeynoteCompanion() {
 
     console.log(`🔄 [Agent: ${current.name}] Reloading Live API configuration due to agent change...`);
     setConfigLoaded(false); // Reset config loaded state
+    lastAgentIdRef.current = current.id;
     fetchLiveApiConfig();
-  }, [setConfig, current.id]); // Re-fetch config when agent changes
+  }, [setConfig, current.id, current.name]); // Re-fetch config when agent id changes
 
   // Initiate the session when the Live API connection is established and config is loaded
   useEffect(() => {

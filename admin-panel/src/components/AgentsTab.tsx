@@ -1,15 +1,17 @@
 'use client'
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { agentsAPI } from '../lib/api'
-import { AVAILABLE_VOICES, AGENT_COLORS } from '../../../shared/types'
 
 export default function AgentsTab() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingAgent, setEditingAgent] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
-  const { data: agents, isLoading } = useQuery('agents', agentsAPI.getAll)
+  const { data: agents, isLoading: agentsLoading } = useQuery('agents', agentsAPI.getAll)
+  const { data: colors, isLoading: colorsLoading } = useQuery('agent-colors', agentsAPI.getColors)
+  const { data: voices, isLoading: voicesLoading } = useQuery('agent-voices', agentsAPI.getVoices)
+  const { data: systemPrompts, isLoading: promptsLoading } = useQuery('system-prompts', agentsAPI.getSystemPrompts)
 
   const createMutation = useMutation(agentsAPI.create, {
     onSuccess: () => {
@@ -35,7 +37,7 @@ export default function AgentsTab() {
     }
   })
 
-  if (isLoading) {
+  if (agentsLoading || colorsLoading || voicesLoading || promptsLoading) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <div className="animate-pulse space-y-4">
@@ -121,8 +123,8 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
     id: '',
     name: '',
     personality: '',
-    body_color: AGENT_COLORS[0] as any,
-    voice: AVAILABLE_VOICES[0] as any,
+    body_color: '',
+    voice: '',
     avatar_url: '',
     knowledge_base: '',
     system_prompt: '',
@@ -130,6 +132,21 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
     voice_language: 'en-US',
     voice_characteristics: ''
   })
+
+  // Get data from API queries
+  const { data: colors } = useQuery('agent-colors', agentsAPI.getColors)
+  const { data: voices } = useQuery('agent-voices', agentsAPI.getVoices)
+  const { data: systemPrompts } = useQuery('system-prompts', agentsAPI.getSystemPrompts)
+
+  // Set default values when data loads
+  React.useEffect(() => {
+    if (colors && colors.length > 0 && !formData.body_color) {
+      setFormData(prev => ({ ...prev, body_color: colors[0].hex_code }))
+    }
+    if (voices && voices.length > 0 && !formData.voice) {
+      setFormData(prev => ({ ...prev, voice: voices[0].name }))
+    }
+  }, [colors, voices, formData.body_color, formData.voice])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -192,11 +209,13 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
             </label>
             <select
               value={formData.body_color}
-              onChange={(e) => setFormData(prev => ({ ...prev, body_color: e.target.value as any }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, body_color: e.target.value }))}
               className="form-input"
             >
-              {AGENT_COLORS.map(color => (
-                <option key={color} value={color}>{color}</option>
+              {colors?.map((color: any) => (
+                <option key={color.id} value={color.hex_code}>
+                  {color.name} ({color.hex_code})
+                </option>
               ))}
             </select>
           </div>
@@ -206,11 +225,13 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
             </label>
             <select
               value={formData.voice}
-              onChange={(e) => setFormData(prev => ({ ...prev, voice: e.target.value as any }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, voice: e.target.value }))}
               className="form-input"
             >
-              {AVAILABLE_VOICES.map(voice => (
-                <option key={voice} value={voice}>{voice}</option>
+              {voices?.map((voice: any) => (
+                <option key={voice.id} value={voice.name}>
+                  {voice.name} ({voice.style}, {voice.gender})
+                </option>
               ))}
             </select>
           </div>
@@ -308,11 +329,16 @@ function CreateAgentForm({ onCancel, onSubmit, isLoading }: any) {
 }
 
 function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
+  // Get data from API queries
+  const { data: colors } = useQuery('agent-colors', agentsAPI.getColors)
+  const { data: voices } = useQuery('agent-voices', agentsAPI.getVoices)
+  const { data: systemPrompts } = useQuery('system-prompts', agentsAPI.getSystemPrompts)
+
   const [formData, setFormData] = useState({
     name: agent?.name || '',
     personality: agent?.personality || '',
-    body_color: agent?.body_color || AGENT_COLORS[0],
-    voice: agent?.voice || AVAILABLE_VOICES[0],
+    body_color: agent?.body_color || '',
+    voice: agent?.voice || '',
     avatar_url: agent?.avatar_url || '',
     knowledge_base: agent?.knowledge_base || '',
     system_prompt: agent?.system_prompt || '',
@@ -321,6 +347,16 @@ function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
     voice_characteristics: agent?.voice_characteristics || '',
     is_active: agent?.is_active ?? true
   })
+
+  // Set default values when data loads
+  React.useEffect(() => {
+    if (colors && colors.length > 0 && !formData.body_color) {
+      setFormData(prev => ({ ...prev, body_color: colors[0].hex_code }))
+    }
+    if (voices && voices.length > 0 && !formData.voice) {
+      setFormData(prev => ({ ...prev, voice: voices[0].name }))
+    }
+  }, [colors, voices, formData.body_color, formData.voice])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -368,11 +404,13 @@ function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
             </label>
             <select
               value={formData.body_color}
-              onChange={(e) => setFormData(prev => ({ ...prev, body_color: e.target.value as any }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, body_color: e.target.value }))}
               className="form-input"
             >
-              {AGENT_COLORS.map(color => (
-                <option key={color} value={color}>{color}</option>
+              {colors?.map((color: any) => (
+                <option key={color.id} value={color.hex_code}>
+                  {color.name} ({color.hex_code})
+                </option>
               ))}
             </select>
           </div>
@@ -382,11 +420,13 @@ function EditAgentForm({ agent, onCancel, onSubmit, isLoading }: any) {
             </label>
             <select
               value={formData.voice}
-              onChange={(e) => setFormData(prev => ({ ...prev, voice: e.target.value as any }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, voice: e.target.value }))}
               className="form-input"
             >
-              {AVAILABLE_VOICES.map(voice => (
-                <option key={voice} value={voice}>{voice}</option>
+              {voices?.map((voice: any) => (
+                <option key={voice.id} value={voice.name}>
+                  {voice.name} ({voice.style}, {voice.gender})
+                </option>
               ))}
             </select>
           </div>
