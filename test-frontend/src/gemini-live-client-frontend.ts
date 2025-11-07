@@ -89,17 +89,72 @@ export class GeminiLiveFrontendClient extends EventEmitter<GeminiLiveFrontendCli
     console.log('🎵 Gemini Live Frontend: Client initialized (Based on working frontend)');
   }
 
-  async connect(agent: any, options?: { model?: string; language?: string }): Promise<void> {
+  async connect(agent: any, options?: { model?: string; language?: string; voice?: string; ttsModel?: string }): Promise<void> {
     try {
       const model = options?.model || 'gemini-2.5-flash-native-audio-preview-09-2025';
-      const language = options?.language || 'Armenian';
-      const systemInstruction = agent?.system_prompt || 
-        `You are a helpful and friendly conversational AI. Start the conversation with a short welcome message in ${language}. All your responses must be in ${language}.`;
+      const language = options?.language || 'hy-AM';
+      const voice = options?.voice || 'Kore';
+      
+      // Create language-specific system instruction with stronger enforcement
+      let systemInstruction = agent?.system_prompt;
+      if (!systemInstruction) {
+        // Create appropriate instruction based on language with stronger enforcement
+        if (language === 'hy-AM') {
+          systemInstruction = `ԿԱՐԵՎՈՐ: Դուք ՄԻԱՅՆ հայերեն եք խոսում: Արգելված է օգտագործել անգլերեն, ռուսերեն կամ այլ լեզու: 
+
+Դուք հայերեն խոսող օգտակար և բարեկամական զրուցակից արհեստական բանականություն եք: Զրույցը սկսեք հայերեն ողջույնով: Բոլոր պատասխանները ԲԱՑԱՌԱՊԵՍ հայերեն:
+
+ՕՐԻՆԱԿ ողջույն: "Բարև ձեզ! Ինչպե՞ս կարող եմ օգնել:"`;
+        } else if (language === 'ru-RU') {
+          systemInstruction = `ВАЖНО: Вы говорите ТОЛЬКО на русском языке. Запрещено использовать английский или другие языки.
+
+Вы полезный и дружелюбный русскоязычный ИИ-помощник. Начните разговор с приветствия на русском. Все ответы ИСКЛЮЧИТЕЛЬНО на русском языке.
+
+ПРИМЕР приветствия: "Здравствуйте! Как дела? Чем могу помочь?"`;
+        } else {
+          systemInstruction = `IMPORTANT: You speak ONLY in English. Do not use any other languages.
+
+You are a helpful and friendly English-speaking conversational AI. Start with an English greeting. All responses EXCLUSIVELY in English.
+
+EXAMPLE greeting: "Hello! How can I help you today?"`;
+        }
+      } else {
+        // If agent has system_prompt, ensure language enforcement is added
+        if (language === 'hy-AM') {
+          systemInstruction = `ԿԱՐԵՎՈՐ: Դուք ՄԻԱՅՆ հայերեն եք խոսում: Արգելված է օգտագործել անգլերեն, ռուսերեն կամ այլ լեզու:
+
+${systemInstruction}
+
+Բոլոր պատասխանները ԲԱՑԱՌԱՊԵՍ հայերեն:`;
+        } else if (language === 'ru-RU') {
+          systemInstruction = `ВАЖНО: Вы говорите ТОЛЬКО на русском языке. Запрещено использовать английский или другие языки.
+
+${systemInstruction}
+
+Все ответы ИСКЛЮЧИТЕЛЬНО на русском языке.`;
+        } else {
+          systemInstruction = `IMPORTANT: You speak ONLY in English. Do not use any other languages.
+
+${systemInstruction}
+
+All responses EXCLUSIVELY in English.`;
+        }
+      }
 
       console.log('🎵 Gemini Live Frontend: Connecting...');
-      console.log('   Model:', model);
-      console.log('   Language:', language);
-      console.log('   System Instruction:', systemInstruction.substring(0, 100) + '...');
+      console.log('🎤 Model:', model);
+      console.log('🗣️ Voice:', voice);
+      console.log('🌐 Language:', language);
+      console.log('👤 Agent:', agent?.name || 'Unknown');
+      console.log('🔧 Agent Data:', { 
+        voice: agent?.voice, 
+        language: agent?.language,
+        voice_characteristics: agent?.voice_characteristics,
+        system_prompt: agent?.system_prompt?.substring(0, 50) + '...'
+      });
+      console.log('⚙️ Options passed:', options);
+      console.log('🎙️ System Instruction:', systemInstruction.substring(0, 100) + '...');
+      console.log('📝 FULL SYSTEM INSTRUCTION:', systemInstruction);
 
       if (this.status === 'connected' || this.status === 'connecting') {
         console.warn('🎵 Already connected or connecting');
@@ -121,12 +176,12 @@ export class GeminiLiveFrontendClient extends EventEmitter<GeminiLiveFrontendCli
         console.log('🎵 Audio streamer created');
       }
 
-      // Connect to Gemini Live API using exact same config as working frontend
+      // Connect to Gemini Live API with both audio and text modalities for transcription
       const config: LiveConnectConfig = {
-        responseModalities: [Modality.AUDIO],
+        responseModalities: [Modality.AUDIO, Modality.TEXT],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Aoede' },
+            prebuiltVoiceConfig: { voiceName: voice },
           },
         },
         systemInstruction: {

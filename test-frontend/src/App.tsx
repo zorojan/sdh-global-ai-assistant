@@ -38,8 +38,9 @@ interface Agent {
   voice: string
   body_color?: string
   system_prompt?: string
-  voice_language?: string
+  voice_language?: string // TODO: Remove this duplicate field
   knowledge_base?: string
+  voice_characteristics?: string
 }
 
 interface DiagnosticsData {
@@ -143,13 +144,75 @@ function App() {
     return (diagnostics as any).openai_tts_model || (diagnostics as any).default_tts_model || 'gpt-4o-mini-tts'
   }
 
+  // Unified voice configuration - consolidates agent and global settings
+  const computeVoiceConfig = (prov: Provider, agent: Agent | null) => {
+    console.log('🔧 Computing voice config for provider:', prov);
+    console.log('🤖 Agent data for voice config:', {
+      name: agent?.name,
+      voice: agent?.voice,
+      language: agent?.language,
+      voice_language: agent?.voice_language,
+      voice_characteristics: agent?.voice_characteristics
+    });
+    console.log('📊 Available diagnostics for fallbacks:', {
+      gemini_default_voice: (diagnostics as any).gemini_default_voice,
+      gemini_default_language: (diagnostics as any).gemini_default_language,
+      openai_voice: (diagnostics as any).openai_voice,
+      default_voice: (diagnostics as any).default_voice,
+      realtime_language: (diagnostics as any).realtime_language,
+      default_language: (diagnostics as any).default_language
+    });
+    
+    if (prov === 'gemini') {
+      // Force Armenian voice mapping for testing
+      let voice = agent?.voice || (diagnostics as any).gemini_default_voice || 'Kore';
+      
+      // Override voice for Armenian agents to use "Orus" 
+      if (agent?.language === 'hy-AM' || agent?.voice_language === 'hy-AM') {
+        voice = 'Orus';
+        console.log('🎯 FORCING Armenian voice to Orus for agent:', agent?.name);
+      }
+      
+      const config = {
+        // Use computed voice (potentially overridden)
+        voice: voice,
+        // Use agent language (single field), fallback to global default
+        language: agent?.language || 
+                  (diagnostics as any).gemini_default_language || 
+                  'hy-AM',
+        // TTS model comes from global settings only
+        ttsModel: computeTTSModel(prov),
+        // Voice characteristics (agent-specific only)
+        characteristics: agent?.voice_characteristics || undefined
+      };
+      console.log('🎵 Computed Gemini voice config:', config);
+      return config;
+    } else {
+      // OpenAI
+      const config = {
+        voice: (diagnostics as any).openai_voice || 
+               (diagnostics as any).default_voice || 
+               'alloy',
+        language: (diagnostics as any).realtime_language || 
+                  (diagnostics as any).default_language || 
+                  'en-US',
+        ttsModel: computeTTSModel(prov),
+        characteristics: undefined
+      };
+      console.log('🤖 Computed OpenAI voice config:', config);
+      return config;
+    }
+  }
+
   const loadAgents = async () => {
     try {
       const response = await fetch(`${API_URL}/api/agents`)
       if (response.ok) {
         const agentsData = await response.json()
+        console.log('🤖 Loaded agents data:', agentsData)
         setAgents(agentsData)
         if (agentsData.length > 0) {
+          console.log('🎯 Default selected agent:', agentsData[0])
           setSelectedAgent(agentsData[0])
         }
       }
@@ -345,10 +408,12 @@ function App() {
         console.log('✅ API key found:', apiKey.substring(0, 10) + '...')
       }
 
+      // Compute unified voice configuration (consolidates agent + global settings)
+      const voiceConfig = computeVoiceConfig(provider, selectedAgent)
+      
       // Log the connect-time payload (one-time initial payload sent to provider)
       try {
           const connectModel = computeModelFor(provider, 'audio')
-          const ttsModel = computeTTSModel(provider)
             const systemPrompt = selectedAgent?.system_prompt || ''
             const connectLog: AIRequestLog = {
               timestamp: Date.now(),
@@ -360,9 +425,12 @@ function App() {
               params: {
                 agentId: selectedAgent?.id,
                 agentName: selectedAgent?.name,
-                language: selectedAgent?.language,
+                // Use unified voice config instead of raw agent fields
+                voice: voiceConfig.voice,
+                language: voiceConfig.language,
                 model: connectModel,
-                ttsModel
+                ttsModel: voiceConfig.ttsModel,
+                voiceCharacteristics: voiceConfig.characteristics
               }
             }
             setAIRequestLogs(prev => [connectLog, ...prev.slice(0, 9)])
@@ -377,10 +445,16 @@ function App() {
           geminiFrontendClientRef.current = new GeminiLiveFrontendClient(apiKey)
           
           geminiFrontendClientRef.current!.on('content', (content: any) => {
+            console.log('📨 Frontend Implementation received content:', content);
+            
             // Handle text content if available
+            let hasText = false;
+            let hasAudio = false;
+            
             if (content.parts) {
               for (const part of content.parts) {
                 if (part.text) {
+                  hasText = true;
                   const aiMessage: Message = {
                     id: Date.now().toString() + '_ai_frontend_voice',
                     text: part.text,
@@ -389,7 +463,21 @@ function App() {
                   }
                   setMessages(prev => [...prev, aiMessage])
                 }
+                if (part.inlineData?.mimeType?.includes('audio')) {
+                  hasAudio = true;
+                }
               }
+            }
+            
+            // If we got audio but no text, show an indicator
+            if (hasAudio && !hasText) {
+              const aiMessage: Message = {
+                id: Date.now().toString() + '_ai_frontend_audio',
+                text: '🔊 [Audio response received]',
+                sender: 'ai',
+                timestamp: Date.now()
+              }
+              setMessages(prev => [...prev, aiMessage])
             }
           })
           
@@ -397,9 +485,14 @@ function App() {
             setError(`Gemini Live Frontend: ${error.message}`)
           })
           
+          console.log('🎵 Connecting Frontend Client with voice config:', voiceConfig);
+          console.log('👤 Selected agent data:', selectedAgent);
+          
           await geminiFrontendClientRef.current!.connect(selectedAgent, { 
             model: computeModelFor(provider, 'audio'),
-            language: selectedAgent?.language || 'Armenian'
+            language: voiceConfig.language,
+            voice: voiceConfig.voice,
+            ttsModel: voiceConfig.ttsModel
           })
           await geminiFrontendClientRef.current!.startRecording()
           
@@ -421,9 +514,14 @@ function App() {
             setError(`Gemini Live Working: ${error}`)
           })
           
+          console.log('🔊 Connecting Working Client with voice config:', voiceConfig);
+          console.log('👤 Selected agent data:', selectedAgent);
+          
           await geminiWorkingClientRef.current!.connect(selectedAgent, { 
             model: computeModelFor(provider, 'audio'),
-            language: selectedAgent?.language || 'Armenian'
+            language: voiceConfig.language,
+            voice: voiceConfig.voice,
+            ttsModel: voiceConfig.ttsModel
           })
           await geminiWorkingClientRef.current!.startRecording()
           
@@ -445,7 +543,10 @@ function App() {
             setError(`Gemini Live SDK: ${error}`)
           })
           
-          await geminiSDKClientRef.current!.connect(selectedAgent, { model: computeModelFor(provider, 'audio'), ttsModel: computeTTSModel(provider) })
+          await geminiSDKClientRef.current!.connect(selectedAgent, { 
+            model: computeModelFor(provider, 'audio'), 
+            ttsModel: voiceConfig.ttsModel
+          })
           await geminiSDKClientRef.current!.startRecording()
         } else {
           // Use old proxy-based client
@@ -757,11 +858,15 @@ function App() {
             👋 Welcome! Choose your AI provider and start chatting or use voice mode.
           </div>
         ) : (
-          messages.map((message) => (
-            <div key={message.id} className={`message ${message.sender}`}>
-              {message.text}
-            </div>
-          ))
+          // In voice mode, only show AI messages to avoid duplication
+          // In chat mode, show all messages
+          messages
+            .filter(message => mode === 'chat' || message.sender === 'ai')
+            .map((message) => (
+              <div key={message.id} className={`message ${message.sender}`}>
+                {message.text}
+              </div>
+            ))
         )}
         
         {isLoading && (

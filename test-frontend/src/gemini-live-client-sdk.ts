@@ -13,6 +13,7 @@ export class GeminiLiveClientSDK {
   private audioContext: AudioContext | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private mediaStream: MediaStream | null = null;
+  private scriptProcessor: ScriptProcessorNode | null = null;
 
   private onMessageCallback: ((message: string) => void) | null = null;
   private onErrorCallback: ((error: string) => void) | null = null;
@@ -183,69 +184,40 @@ export class GeminiLiveClientSDK {
         sampleRate: 16000
       });
 
-      // Set up MediaRecorder for capturing audio chunks
-      this.mediaRecorder = new MediaRecorder(this.mediaStream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+      // Set up ScriptProcessorNode for real-time PCM audio processing (like working implementation)
+      const mediaStreamSource = this.audioContext.createMediaStreamSource(this.mediaStream);
+      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-      this.mediaRecorder.ondataavailable = async (event) => {
-        if (event.data.size > 0 && this.isRecording) {
-          console.log('🎙️ Gemini Live SDK: Received audio data, size:', event.data.size);
-          
-          // Convert blob to ArrayBuffer for sending to Gemini
-          const audioBuffer = await event.data.arrayBuffer();
-          const audioData = new Uint8Array(audioBuffer);
-          
-          console.log('🎙️ Gemini Live SDK: Converted to ArrayBuffer, size:', audioData.length);
-          
-          // Send audio data to session
-          if (this.session && this.isConnected && this.isRecording) {
-            try {
-              await this.session.sendRealtimeInput({ 
-                media: {
-                  mimeType: 'audio/webm;codecs=opus',
-                  data: audioData
-                }
-              });
-              console.log('✅ Gemini Live SDK: Audio chunk sent successfully, size:', audioData.length);
-            } catch (error) {
-              console.error('❌ Gemini Live SDK: Error sending audio:', error);
-              console.error('   Error details:', error);
-              
-              // If error suggests session is closed, stop recording
-              if (error instanceof Error && error.message.includes('session')) {
-                console.log('🔄 Session error detected, stopping recording');
-                this.stopRecording();
-              }
+      // Process audio in real-time and convert to PCM format
+      this.scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+        if (!this.isRecording || !this.session) return;
+
+        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+        const pcmBlob = this.createPcmBlob(inputData);
+        
+        // Send audio to session using the same format as working implementation
+        if (this.session && this.isConnected && this.isRecording) {
+          try {
+            this.session.sendRealtimeInput({ media: pcmBlob });
+            console.log('✅ Gemini Live SDK: PCM audio chunk sent successfully');
+          } catch (error) {
+            console.error('❌ Gemini Live SDK: Error sending PCM audio:', error);
+            
+            // If error suggests session is closed, stop recording
+            if (error instanceof Error && (error.message.includes('session') || error.message.includes('closed'))) {
+              console.log('🔄 Session error detected, stopping recording');
+              this.stopRecording();
             }
-          } else {
-            // Only log this warning occasionally to avoid spam
-            if (Math.random() < 0.1) { // Log 10% of the time
-              console.warn('⚠️ Gemini Live SDK: Cannot send audio - session not ready');
-              console.log('   Session exists:', !!this.session);
-              console.log('   Is connected:', this.isConnected);
-              console.log('   Is recording:', this.isRecording);
-            }
-          }
-        } else {
-          if (event.data.size === 0) {
-            console.log('⚠️ Gemini Live SDK: Received empty audio data');
-          }
-          if (!this.isRecording) {
-            console.log('⚠️ Gemini Live SDK: Not recording, ignoring audio data');
           }
         }
       };
 
-      this.mediaRecorder.onerror = (event) => {
-        console.error('🎙️ Gemini Live SDK: MediaRecorder error:', event);
-        if (this.onErrorCallback) {
-          this.onErrorCallback('Recording error occurred');
-        }
-      };
+      // Connect audio processing chain
+      if (this.scriptProcessor && this.audioContext) {
+        mediaStreamSource.connect(this.scriptProcessor);
+        this.scriptProcessor.connect(this.audioContext.destination);
+      }
 
-      // Start recording with time slicing for real-time streaming
-      this.mediaRecorder.start(250); // 250ms chunks for real-time streaming
       this.isRecording = true;
 
       console.log('🎙️ Gemini Live SDK: Recording started');
@@ -388,5 +360,38 @@ export class GeminiLiveClientSDK {
 
   getRecordingStatus(): boolean {
     return this.isRecording;
+  }
+
+  // Helper method to convert ArrayBuffer to base64
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  // Helper method to create PCM blob from Float32Array (from working implementation)
+  private createPcmBlob(data: Float32Array): any {
+    const l = data.length;
+    const int16 = new Int16Array(l);
+    for (let i = 0; i < l; i++) {
+        int16[i] = data[i] * 32768;
+    }
+    return {
+        data: this.encode(new Uint8Array(int16.buffer)),
+        mimeType: 'audio/pcm;rate=16000',
+    };
+  }
+
+  // Helper method to encode bytes to base64 (from working implementation)
+  private encode(bytes: Uint8Array): string {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 }
