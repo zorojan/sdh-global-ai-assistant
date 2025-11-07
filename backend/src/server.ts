@@ -12,6 +12,9 @@ import validationRoutes from './routes/validation';
 import geminiAudioRoutes from './routes/gemini-audio';
 import geminiLiveProxyRoutes, { activeSessions } from './routes/gemini-live-proxy';
 import configRoutes from './routes/config';
+const ragRoutes = require('./routes/rag');
+const { router: voiceRagRoutes, voiceRAGServer } = require('./routes/voice-rag');
+const knowledgeRoutes = require('./routes/knowledge');
 
 dotenv.config();
 
@@ -24,17 +27,79 @@ const server = require('http').createServer(app);
 // Create WebSocket server
 const wss = new WebSocket.Server({ server });
 
-// WebSocket connection handling for Gemini Live
+// WebSocket connection handling
 wss.on('connection', (ws: WebSocket, req) => {
   const url = new URL(req.url || '', 'http://localhost');
   const sessionId = url.searchParams.get('sessionId');
+  const pathname = url.pathname;
 
   if (!sessionId) {
     ws.close(1008, 'Session ID required');
     return;
   }
 
-  console.log('🎙️ WebSocket client connected for session:', sessionId);
+  // Voice RAG WebSocket connections
+  if (pathname.includes('/voice-rag/ws/')) {
+    console.log('🎙️🧠 Voice RAG WebSocket client connected for session:', sessionId);
+    
+    const ragSession = voiceRAGServer.getSession(sessionId);
+    if (!ragSession) {
+      ws.close(1008, 'Voice RAG session not found');
+      return;
+    }
+
+    ws.on('message', async (data: Buffer) => {
+      try {
+        const message = JSON.parse(data.toString());
+        console.log('🎙️🧠 Received Voice RAG message:', message.type);
+
+        // Обновляем активность сессии
+        voiceRAGServer.updateSessionActivity(sessionId);
+
+        if (message.type === 'voice_text') {
+          // Обрабатываем распознанный текст через RAG
+          const result = await voiceRAGServer.processVoiceMessage(
+            message.text,
+            ragSession
+          );
+
+          // Отправляем результат клиенту
+          ws.send(JSON.stringify({
+            type: 'rag_response',
+            session_id: sessionId,
+            ...result
+          }));
+
+        } else if (message.type === 'ping') {
+          // Keep-alive
+          ws.send(JSON.stringify({
+            type: 'pong',
+            timestamp: new Date().toISOString()
+          }));
+        }
+
+      } catch (error: any) {
+        console.error('🎙️🧠 Voice RAG message error:', error);
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: error.message || 'Unknown error'
+        }));
+      }
+    });
+
+    ws.on('close', () => {
+      console.log('🎙️🧠 Voice RAG WebSocket disconnected for session:', sessionId);
+    });
+
+    ws.on('error', (error) => {
+      console.error('🎙️🧠 Voice RAG WebSocket error for session:', sessionId, error);
+    });
+
+    return; // Exit early for Voice RAG connections
+  }
+
+  // Original Gemini Live WebSocket connections
+  console.log('🎙️ Gemini Live WebSocket client connected for session:', sessionId);
 
   const session = activeSessions.get(sessionId);
   if (session) {
@@ -46,26 +111,25 @@ wss.on('connection', (ws: WebSocket, req) => {
       }));
     };
   } else {
-    ws.close(1008, 'Session not found');
+    ws.close(1008, 'Gemini Live session not found');
     return;
   }
 
   ws.on('message', (data: Buffer) => {
     try {
       const message = JSON.parse(data.toString());
-      // Handle client messages if needed
-      console.log('🎙️ Received message from client:', message);
+      console.log('🎙️ Received Gemini Live message from client:', message);
     } catch (error) {
-      console.error('🎙️ Failed to parse client message:', error);
+      console.error('🎙️ Failed to parse Gemini Live client message:', error);
     }
   });
 
   ws.on('close', () => {
-    console.log('🎙️ WebSocket client disconnected for session:', sessionId);
+    console.log('🎙️ Gemini Live WebSocket client disconnected for session:', sessionId);
   });
 
   ws.on('error', (error) => {
-    console.error('🎙️ WebSocket error for session:', sessionId, error);
+    console.error('🎙️ Gemini Live WebSocket error for session:', sessionId, error);
   });
 });
 
@@ -88,6 +152,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/rag', ragRoutes);
+app.use('/api/voice-rag', voiceRagRoutes);
+app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/gemini/audio', geminiAudioRoutes);
 app.use('/api/gemini/live', geminiLiveProxyRoutes);
 app.use('/api', validationRoutes);

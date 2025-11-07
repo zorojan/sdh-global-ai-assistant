@@ -21,6 +21,7 @@
 import ControlTray from './components/console/control-tray/ControlTray';
 import ErrorScreen from './components/demo/ErrorSreen';
 import KeynoteCompanion from './components/demo/keynote-companion/KeynoteCompanion';
+import KeynoteCompanionWithRAG from './components/demo/keynote-companion/KeynoteCompanionWithRAG';
 import Header from './components/Header';
 import UserSettings from './components/UserSettings';
 import DataInitializer from './components/DataInitializer';
@@ -75,6 +76,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('audio');
   const [aiProvider, setAiProvider] = useState<string>('gemini');
+  // RAG интегрирован внутрь Gemini Live
 
   // Show user settings modal on first time
   useEffect(() => {
@@ -199,12 +201,19 @@ function App() {
             />
           )}
           
+          {/* Debug Info */}
+          <div className="fixed top-4 left-4 bg-green-600 text-white p-2 rounded z-50 text-xs">
+            Mode: {interactionMode} | 🧠 Gemini Live + RAG
+          </div>
+
           <div className="streaming-console">
             <main>
+              {/* RAG интегрирован внутрь Gemini Live */}
+
               <div className="main-app-area">
                 {interactionMode === 'audio' ? (
                   aiProvider === 'gemini' ? (
-                    <KeynoteCompanion />
+                    <KeynoteCompanionWithRAG />
                   ) : (
                     <div className="openai-voice-interface">
                       <EnhancedVoiceChatWidget 
