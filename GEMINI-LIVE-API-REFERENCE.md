@@ -1,5 +1,26 @@
 # Gemini Live API Reference
 
+## Client Implementation Variants
+
+### 1. New SDK Client (Recommended)
+- **File**: `gemini-live-client-sdk.ts`
+- **Approach**: Official Google GenAI SDK (`@google/genai`) with `live.connect()`
+- **Audio**: ScriptProcessorNode with PCM format (fixed MediaRecorder issues)
+- **Status**: ✅ Fully functional with proper audio format and voice parameters
+- **Documentation**: See `NEW-SDK-CLIENT-DOCUMENTATION.md`
+
+### 2. Working Implementation 
+- **File**: `gemini-live-client-working-fixed.ts`
+- **Approach**: Direct WebSocket with proven ScriptProcessorNode
+- **Audio**: PCM 16kHz input, 24kHz output
+- **Status**: ✅ Reference implementation
+
+### 3. Frontend Implementation
+- **File**: `gemini-live-client-frontend.ts` 
+- **Approach**: Dual modality (AUDIO + TEXT) with transcriptions
+- **Audio**: ScriptProcessorNode with enhanced logging
+- **Status**: ✅ Updated with proper voice parameters
+
 ## Available Voices (30 total)
 
 According to official documentation at https://ai.google.dev/gemini-api/docs/speech-generation#voices
