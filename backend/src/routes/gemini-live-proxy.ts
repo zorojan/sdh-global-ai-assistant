@@ -55,13 +55,13 @@ router.post('/setup', async (req: Request, res: Response) => {
 
     const apiKey = settingsData.value;
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    const modelToUse = model || 'gemini-2.5-flash-native-audio-preview-09-2025';
+    const modelToUse = model || 'gemini-2.0-flash-live-001';
 
     console.log('??? Gemini Live Proxy: Session ID:', sessionId);
     console.log('??? Gemini Live Proxy: Model:', modelToUse);
 
     // Create WebSocket connection to Google Gemini Live API
-    const googleWsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+    const googleWsUrl = `wss://generativelanguage.googleapis.com/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
     const googleWs = new WebSocket(googleWsUrl);
 
     googleWs.onopen = () => {
@@ -78,7 +78,8 @@ router.post('/setup', async (req: Request, res: Response) => {
                   voiceName: 'Puck'
                 }
               }
-            }
+            },
+            temperature: 0.8
           },
           systemInstruction: {
             parts: [
@@ -91,7 +92,7 @@ router.post('/setup', async (req: Request, res: Response) => {
       };
 
       googleWs.send(JSON.stringify(setupMessage));
-      console.log(' Gemini Live Proxy: Setup message sent');
+      console.log(' Gemini Live Proxy: Setup message sent:', JSON.stringify(setupMessage, null, 2));
     };
 
     googleWs.onmessage = (event) => {
@@ -107,6 +108,7 @@ router.post('/setup', async (req: Request, res: Response) => {
           let text = '';
           let audio: Uint8Array | undefined;
 
+          // Handle server content with model turn
           if (message.serverContent?.modelTurn?.parts) {
             for (const part of message.serverContent.modelTurn.parts) {
               if (part.text) {
@@ -117,6 +119,11 @@ router.post('/setup', async (req: Request, res: Response) => {
                 audio = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
               }
             }
+          }
+
+          // Handle turn complete
+          if (message.serverContent?.turnComplete) {
+            console.log('🎙️ Gemini Live Proxy: Turn complete');
           }
 
           if (text || audio) {
@@ -195,6 +202,7 @@ router.post('/send', async (req: Request, res: Response) => {
         clientContent: {
           turns: [
             {
+              role: 'user',
               parts: [
                 {
                   inlineData: {
@@ -204,8 +212,7 @@ router.post('/send', async (req: Request, res: Response) => {
                 }
               ]
             }
-          ],
-          turnComplete: true
+          ]
         }
       };
 

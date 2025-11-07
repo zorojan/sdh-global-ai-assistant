@@ -173,6 +173,49 @@ const insertDefaultData = async (): Promise<void> => {
       value: '',
       description: 'Company Documents (internal information, processes, etc.)',
       type: 'text'
+    },
+    // Live API Configuration Settings
+    {
+      key: 'live_api_model',
+      value: 'gemini-2.5-flash-native-audio-preview-09-2025',
+      description: 'Live API Model for real-time conversations',
+      type: 'string'
+    },
+    {
+      key: 'live_api_response_modalities',
+      value: 'AUDIO',
+      description: 'Response modalities for Live API (AUDIO, TEXT, AUDIO+TEXT)',
+      type: 'select'
+    },
+    {
+      key: 'live_api_voice_name',
+      value: 'Zephyr',
+      description: 'Voice name for Live API speech synthesis (Zephyr, Kore, Puck, Charon, Fenrir)',
+      type: 'select'
+    },
+    {
+      key: 'live_api_enable_input_transcription',
+      value: 'true',
+      description: 'Enable transcription of user input audio',
+      type: 'boolean'
+    },
+    {
+      key: 'live_api_enable_output_transcription',
+      value: 'true',
+      description: 'Enable transcription of AI output audio',
+      type: 'boolean'
+    },
+    {
+      key: 'live_api_temperature',
+      value: '0.8',
+      description: 'Temperature setting for Live API responses (0.0-2.0)',
+      type: 'number'
+    },
+    {
+      key: 'live_api_system_instruction',
+      value: 'You are a conversational AI. Your tone should be բարյացակամ. You should express ուրախ. Start the conversation immediately with a short welcome message in Armenian without waiting for the user to speak first. All your subsequent responses must be in Armenian.',
+      description: 'System instruction for Live API conversations',
+      type: 'text'
     }
   ];
 

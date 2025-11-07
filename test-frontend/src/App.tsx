@@ -89,6 +89,9 @@ function App() {
   const [useWorkingClient, setUseWorkingClient] = useState(false) // Working implementation
   const [useFrontendClient, setUseFrontendClient] = useState(false) // Frontend implementation
 
+  // Message ID counter for unique keys
+  const messageIdCounter = useRef(0)
+
   // Audio clients
   const geminiClientRef = useRef<GeminiLiveClient | null>(null)
   const geminiSDKClientRef = useRef<GeminiLiveClientSDK | null>(null)
@@ -311,7 +314,7 @@ function App() {
     
     // Add user message
     const userMessage: Message = {
-      id: Date.now().toString() + '_user',
+      id: `${Date.now()}_${messageIdCounter.current++}_user`,
       text: message,
       sender: 'user',
       timestamp: Date.now()
@@ -352,7 +355,7 @@ function App() {
       if (response.ok) {
         const data = await response.json()
         const aiMessage: Message = {
-          id: Date.now().toString() + '_ai',
+          id: `${Date.now()}_${messageIdCounter.current++}_ai`,
           text: data.response,
           sender: 'ai',
           timestamp: Date.now()
@@ -456,7 +459,7 @@ function App() {
                 if (part.text) {
                   hasText = true;
                   const aiMessage: Message = {
-                    id: Date.now().toString() + '_ai_frontend_voice',
+                    id: `${Date.now()}_${messageIdCounter.current++}_ai_frontend_voice`,
                     text: part.text,
                     sender: 'ai',
                     timestamp: Date.now()
@@ -472,7 +475,7 @@ function App() {
             // If we got audio but no text, show an indicator
             if (hasAudio && !hasText) {
               const aiMessage: Message = {
-                id: Date.now().toString() + '_ai_frontend_audio',
+                id: `${Date.now()}_${messageIdCounter.current++}_ai_frontend_audio`,
                 text: '🔊 [Audio response received]',
                 sender: 'ai',
                 timestamp: Date.now()
@@ -502,7 +505,7 @@ function App() {
           
           geminiWorkingClientRef.current!.onMessage((message: string) => {
             const aiMessage: Message = {
-              id: Date.now().toString() + '_ai_working_voice',
+              id: `${Date.now()}_${messageIdCounter.current++}_ai_working_voice`,
               text: message,
               sender: 'ai',
               timestamp: Date.now()
@@ -531,7 +534,7 @@ function App() {
           
           geminiSDKClientRef.current!.onMessage((message: string) => {
             const aiMessage: Message = {
-              id: Date.now().toString() + '_ai_sdk_voice',
+              id: `${Date.now()}_${messageIdCounter.current++}_ai_sdk_voice`,
               text: message,
               sender: 'ai',
               timestamp: Date.now()
@@ -554,7 +557,7 @@ function App() {
           
           geminiClientRef.current!.onMessage((message: string) => {
             const aiMessage: Message = {
-              id: Date.now().toString() + '_ai_voice',
+              id: `${Date.now()}_${messageIdCounter.current++}_ai_voice`,
               text: message,
               sender: 'ai',
               timestamp: Date.now()
@@ -575,7 +578,7 @@ function App() {
         
         openaiClientRef.current.onMessage((message: string) => {
           const aiMessage: Message = {
-            id: Date.now().toString() + '_ai_voice',
+            id: `${Date.now()}_${messageIdCounter.current++}_ai_voice`,
             text: message,
             sender: 'ai',
             timestamp: Date.now()
@@ -595,7 +598,7 @@ function App() {
       
       // Add connection status message
       const statusMessage: Message = {
-        id: Date.now().toString() + '_status',
+        id: `${Date.now()}_${messageIdCounter.current++}_status`,
         text: `🎤 ${provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime'} voice session started`,
         sender: 'ai',
         timestamp: Date.now()
@@ -641,7 +644,7 @@ function App() {
       
       // Add disconnection message
       const statusMessage: Message = {
-        id: Date.now().toString() + '_status',
+        id: `${Date.now()}_${messageIdCounter.current++}_status`,
         text: `🔇 Voice session ended`,
         sender: 'ai',
         timestamp: Date.now()

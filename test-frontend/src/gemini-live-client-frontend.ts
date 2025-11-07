@@ -300,14 +300,22 @@ All responses EXCLUSIVELY in English.`;
         this.workletNode = new AudioWorkletNode(this.audioContext, 'audio-processor');
         this.workletNode.port.onmessage = (event) => {
           if (this.session && this.status === 'connected') {
-            const pcmData = new Uint8Array(event.data);
-            const base64Data = encode(pcmData);
-            this.session.sendRealtimeInput({
-              media: {
-                mimeType: 'audio/pcm;rate=16000',
-                data: base64Data,
-              },
-            });
+            try {
+              const pcmData = new Uint8Array(event.data);
+              const base64Data = encode(pcmData);
+              this.session.sendRealtimeInput({
+                media: {
+                  mimeType: 'audio/pcm;rate=16000',
+                  data: base64Data,
+                },
+              });
+            } catch (error) {
+              // Ignore errors when WebSocket is closing/closed
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              if (!errorMessage.includes('CLOSING') && !errorMessage.includes('CLOSED')) {
+                console.warn('Audio send error:', error);
+              }
+            }
           }
         };
 
@@ -321,20 +329,28 @@ All responses EXCLUSIVELY in English.`;
         const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
         processor.onaudioprocess = (event) => {
           if (this.session && this.status === 'connected') {
-            const inputData = event.inputBuffer.getChannelData(0);
-            const pcmData = new Int16Array(inputData.length);
-            
-            for (let i = 0; i < inputData.length; i++) {
-              pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+            try {
+              const inputData = event.inputBuffer.getChannelData(0);
+              const pcmData = new Int16Array(inputData.length);
+              
+              for (let i = 0; i < inputData.length; i++) {
+                pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+              }
+              
+              const base64Data = encode(new Uint8Array(pcmData.buffer));
+              this.session.sendRealtimeInput({
+                media: {
+                  mimeType: 'audio/pcm;rate=16000',
+                  data: base64Data,
+                },
+              });
+            } catch (error) {
+              // Ignore errors when WebSocket is closing/closed
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              if (!errorMessage.includes('CLOSING') && !errorMessage.includes('CLOSED')) {
+                console.warn('Audio send error:', error);
+              }
             }
-            
-            const base64Data = encode(new Uint8Array(pcmData.buffer));
-            this.session.sendRealtimeInput({
-              media: {
-                mimeType: 'audio/pcm;rate=16000',
-                data: base64Data,
-              },
-            });
           }
         };
 

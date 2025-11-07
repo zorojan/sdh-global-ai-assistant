@@ -71,6 +71,79 @@ router.get('/diagnostics', async (req: any, res: express.Response) => {
   }
 });
 
+// Public endpoint for Live API configuration (no auth required, no sensitive data)
+router.get('/live-api-config', async (req: any, res: express.Response) => {
+  try {
+    console.log('🎵 Fetching Live API configuration...');
+
+    const { data: settings, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', [
+        'live_api_model',
+        'live_api_response_modalities',
+        'live_api_voice_name',
+        'live_api_enable_input_transcription',
+        'live_api_enable_output_transcription',
+        'live_api_temperature',
+        'live_api_system_instruction'
+      ]);
+
+    if (error) {
+      console.error('Error fetching Live API settings:', error);
+      throw error;
+    }
+
+    console.log('📦 Found Live API settings:', settings?.length || 0);
+
+    // Convert to configuration object
+    const config: any = {};
+
+    settings.forEach((setting: any) => {
+      config[setting.key] = setting.value;
+    });
+
+    // Build the Live API configuration object
+    const liveApiConfig = {
+      model: config.live_api_model || 'gemini-2.5-flash-native-audio-preview-09-2025',
+      config: {
+        responseModalities: config.live_api_response_modalities === 'AUDIO+TEXT'
+          ? ['AUDIO', 'TEXT']
+          : config.live_api_response_modalities === 'TEXT'
+            ? ['TEXT']
+            : ['AUDIO'], // Default to AUDIO only
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: config.live_api_voice_name || 'Zephyr'
+            }
+          }
+        },
+        ...(config.live_api_enable_input_transcription === 'true' && {
+          inputAudioTranscription: {}
+        }),
+        ...(config.live_api_enable_output_transcription === 'true' && {
+          outputAudioTranscription: {}
+        }),
+        temperature: parseFloat(config.live_api_temperature) || 0.8,
+        systemInstruction: {
+          parts: [
+            {
+              text: config.live_api_system_instruction || 'You are a helpful AI assistant.'
+            }
+          ]
+        }
+      }
+    };
+
+    console.log('✅ Live API configuration prepared');
+    res.json(liveApiConfig);
+  } catch (error) {
+    console.error('❌ Get Live API config error:', error);
+    res.status(500).json({ error: 'Failed to fetch Live API configuration' });
+  }
+});
+
 // Get all settings
 router.get('/', authenticateToken, async (req: any, res: express.Response) => {
   try {
