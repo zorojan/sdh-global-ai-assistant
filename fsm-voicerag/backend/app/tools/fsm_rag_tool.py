@@ -67,14 +67,33 @@ class FSMRAGTool:
         docs = []
         for root, _, files in os.walk(documents_path):
             for f in files:
-                if f.lower().endswith((".txt", ".md")):
-                    try:
-                        with open(os.path.join(root, f), "r", encoding="utf-8") as fh:
+                fp = os.path.join(root, f)
+                try:
+                    if f.lower().endswith((".txt", ".md")):
+                        with open(fp, "r", encoding="utf-8") as fh:
                             text = fh.read()
-                            docs.append({"id": os.path.join(root, f), "text": text, "meta": {"source": f}})
-                    except Exception:
-                        continue
-                # PDF/DOCX readers can be plugged here; keep minimal for now.
+                            docs.append({"id": fp, "text": text, "meta": {"source": f}})
+                    elif f.lower().endswith(".pdf"):
+                        try:
+                            from pypdf import PdfReader
+                            reader = PdfReader(fp)
+                            pages = [p.extract_text() or "" for p in reader.pages]
+                            text = "\n".join(pages)
+                            docs.append({"id": fp, "text": text, "meta": {"source": f}})
+                        except Exception:
+                            # pypdf not available or parse failed
+                            continue
+                    elif f.lower().endswith(".docx"):
+                        try:
+                            import docx
+                            doc = docx.Document(fp)
+                            paragraphs = [p.text for p in doc.paragraphs]
+                            text = "\n".join(paragraphs)
+                            docs.append({"id": fp, "text": text, "meta": {"source": f}})
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
 
         if not docs:
             return False
@@ -84,7 +103,10 @@ class FSMRAGTool:
             ids = [d["id"] for d in docs]
             metadatas = [d.get("meta", {}) for d in docs]
             try:
-                # If an embedding function is configured in environment, you may add it here.
+                # If embeddings are available via langchain or a configured embedding
+                # function, compute them and let chroma handle indexing.
+                # Here we simply call add() with documents; Chroma/LangChain
+                # clients will compute embeddings if configured via the collection.
                 self._collection.add(documents=texts, metadatas=metadatas, ids=ids)
                 try:
                     self._client.persist()
@@ -116,14 +138,16 @@ class FSMRAGTool:
 
         if CHROMA_AVAILABLE and self._client is not None and hasattr(self._collection, "query"):
             try:
-                # This assumes chroma collection supports query by 'n_results' and 'query_texts'
+                # Use Chroma query by texts. The return structure can vary; support
+                # the commonly used shapes where 'documents' and 'metadatas' are returned.
                 results = self._collection.query(query_texts=[query], n_results=k)
-                # results structure varies; normalize to a list of dicts
                 found = []
-                # attempt to extract documents and metadatas
-                for idx, rows in enumerate(results.get("documents", [[]])):
-                    for doc_text in rows:
-                        found.append({"text": doc_text})
+                docs = results.get("documents") or []
+                metas = results.get("metadatas") or []
+                # docs is typically a list-of-lists corresponding to queries
+                for doc_list, meta_list in zip(docs, metas):
+                    for d, m in zip(doc_list, meta_list):
+                        found.append({"text": d, "meta": m})
                 return found[:k]
             except Exception:
                 pass
