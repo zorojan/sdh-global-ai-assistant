@@ -1,7 +1,15 @@
 import asyncio
-from typing import Optional, Callable, Awaitable
+from typing import Optional, Callable, Awaitable, List, Dict, Any
 
 from .base import ILiveVoiceAgent
+try:
+    from ..tools.fsm_rag_tool import get_rag_tool
+except Exception:
+    # when package import paths differ, try alternative
+    try:
+        from app.tools.fsm_rag_tool import get_rag_tool
+    except Exception:
+        get_rag_tool = None
 
 
 class LocalLiveAgent(ILiveVoiceAgent):
@@ -30,6 +38,24 @@ class LocalLiveAgent(ILiveVoiceAgent):
     async def process_text(self, text: str):
         # simple echo with a small delay to emulate async work
         await asyncio.sleep(0.1)
+        # If text starts with /rag, perform a RAG search and return top results
+        if text.strip().lower().startswith("/rag ") and get_rag_tool is not None:
+            query = text.strip()[5:]
+            try:
+                rag = get_rag_tool()
+                results = await rag.search_fsm_knowledge(query, k=3)
+                # format results into a readable reply
+                pieces: List[str] = []
+                for r in results:
+                    t = r.get("text") if isinstance(r, dict) else str(r)
+                    pieces.append(t[:800])
+                resp = "RAG results:\n" + "\n---\n".join(pieces)
+            except Exception as e:
+                resp = f"RAG error: {e}"
+            if self._on_response:
+                await self._on_response(resp)
+            return
+
         resp = f"Agent reply: {text}"
         if self._on_response:
             await self._on_response(resp)

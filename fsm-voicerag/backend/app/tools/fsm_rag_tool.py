@@ -30,6 +30,9 @@ class FSMRAGTool:
         self._client = None
         self._collection = None
         self._initialized = False
+        # chunking params
+        self.chunk_size = 1200
+        self.chunk_overlap = 200
 
     async def initialize(self):
         """Initialize chroma client and collection. Safe to call multiple times."""
@@ -42,10 +45,30 @@ class FSMRAGTool:
             self._collection = []  # simple list of documents
             self._initialized = True
             return True
-
-        # create chroma client with local persistence
-        settings = Settings(chroma_db_impl="duckdb+parquet", persist_directory=self.persist_directory)
-        self._client = chromadb.Client(settings=settings)
+        # If cloud credentials are present in environment, prefer CloudClient
+        cloud_api_key = os.getenv("CHROMA_CLOUD_API_KEY")
+        cloud_tenant = os.getenv("CHROMA_CLOUD_TENANT")
+        cloud_database = os.getenv("CHROMA_CLOUD_DATABASE")
+        try:
+            if cloud_api_key:
+                # Use CloudClient when API key is provided. Do NOT hardcode keys in source.
+                try:
+                    # cloud client constructor varies by chromadb version
+                    self._client = chromadb.CloudClient(api_key=cloud_api_key, tenant=cloud_tenant, database=cloud_database)
+                except Exception:
+                    # fallback to generic Client with cloud settings if available
+                    settings = Settings(chroma_db_impl="duckdb+parquet", persist_directory=self.persist_directory)
+                    self._client = chromadb.Client(settings=settings)
+            else:
+                # create chroma client with local persistence
+                settings = Settings(chroma_db_impl="duckdb+parquet", persist_directory=self.persist_directory)
+                self._client = chromadb.Client(settings=settings)
+        except Exception:
+            # if client initialization fails, fall back to in-memory
+            self._client = None
+            self._collection = []
+            self._initialized = True
+            return True
         # create/get collection
         try:
             self._collection = self._client.get_collection("fsm_documents")
@@ -98,16 +121,31 @@ class FSMRAGTool:
         if not docs:
             return False
 
+        # chunk documents into smaller pieces for better retrieval
+        chunks = []
+        for d in docs:
+            text = d["text"]
+            source = d.get("meta", {}).get("source", "")
+            doc_id = d["id"]
+            parts = self._split_text(text, self.chunk_size, self.chunk_overlap)
+            for i, p in enumerate(parts):
+                chunk_id = f"{doc_id}::chunk::{i}"
+                chunks.append({"id": chunk_id, "text": p, "meta": {"source": source, "parent_id": doc_id, "chunk_index": i}})
+
         if CHROMA_AVAILABLE and self._client is not None and hasattr(self._collection, "add"):
-            texts = [d["text"] for d in docs]
-            ids = [d["id"] for d in docs]
-            metadatas = [d.get("meta", {}) for d in docs]
+            texts = [c["text"] for c in chunks]
+            ids = [c["id"] for c in chunks]
+            metadatas = [c.get("meta", {}) for c in chunks]
             try:
-                # If embeddings are available via langchain or a configured embedding
-                # function, compute them and let chroma handle indexing.
-                # Here we simply call add() with documents; Chroma/LangChain
-                # clients will compute embeddings if configured via the collection.
-                self._collection.add(documents=texts, metadatas=metadatas, ids=ids)
+                # If we can compute embeddings via LangChain (or other), do so.
+                embeddings = await self._get_embeddings(texts)
+                if embeddings is not None:
+                    # add with explicit embeddings
+                    self._collection.add(documents=texts, metadatas=metadatas, ids=ids, embeddings=embeddings)
+                else:
+                    # let Chroma compute embeddings if configured externally
+                    self._collection.add(documents=texts, metadatas=metadatas, ids=ids)
+
                 try:
                     self._client.persist()
                 except Exception:
@@ -117,7 +155,7 @@ class FSMRAGTool:
                 # fallback to in-memory append
                 self._collection = getattr(self, "_collection", [])
                 if isinstance(self._collection, list):
-                    self._collection.extend(docs)
+                    self._collection.extend(chunks)
                     return True
                 return False
         else:
@@ -127,6 +165,52 @@ class FSMRAGTool:
                 self._collection.extend(docs)
                 return True
             return False
+
+    def _split_text(self, text: str, max_length: int, overlap: int):
+        """Split text into chunks of roughly max_length with overlap."""
+        if not text:
+            return []
+        text = text.replace("\r\n", "\n")
+        start = 0
+        parts = []
+        L = len(text)
+        while start < L:
+            end = min(start + max_length, L)
+            part = text[start:end]
+            parts.append(part)
+            if end == L:
+                break
+            start = max(end - overlap, end)
+        return parts
+
+    async def _get_embeddings(self, texts: List[str]):
+        """Try to compute embeddings using available libs.
+
+        Returns a list of vector lists or None if not available.
+        """
+        if not texts:
+            return None
+
+        # Try LangChain embeddings first
+        if LANGCHAIN_AVAILABLE:
+            try:
+                # attempt common embedding classes
+                try:
+                    from langchain.embeddings import OpenAIEmbeddings
+                    emb = OpenAIEmbeddings()
+                except Exception:
+                    from langchain.embeddings import HuggingFaceEmbeddings
+                    emb = HuggingFaceEmbeddings()
+                # embed_documents is sync or async depending on implementation
+                if hasattr(emb, "embed_documents"):
+                    vectors = emb.embed_documents(texts)
+                    return vectors
+            except Exception:
+                pass
+
+        # Add additional providers here (google.generativeai, openai, etc.)
+        # if none available, return None to allow Chroma fallback
+        return None
 
     async def search_fsm_knowledge(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
         """Return up to k best-match documents for query.

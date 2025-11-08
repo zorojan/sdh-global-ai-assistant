@@ -8,6 +8,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from session.session_manager import VoiceSessionManager
 from tools.fsm_rag_tool import get_rag_tool
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fsm-voicerag")
@@ -17,6 +18,20 @@ app = FastAPI(title="FSM VoiceRAG Backend")
 # Shared session manager instance
 session_manager = VoiceSessionManager()
 rag_tool = get_rag_tool()
+
+
+class SearchRequest(BaseModel):
+    query: str
+    k: int = 3
+
+
+@app.post("/api/rag/search")
+async def rag_search(req: SearchRequest):
+    try:
+        results = await rag_tool.search_fsm_knowledge(req.query, k=req.k)
+        return {"query": req.query, "results": results}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.on_event("startup")
