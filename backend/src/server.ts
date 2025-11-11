@@ -162,6 +162,12 @@ app.use('/api', validationRoutes);
 // Public endpoint for API key (needed by frontend)
 app.get('/api/public/apikey', async (req, res) => {
   try {
+    // SECURITY: Public API key exposure is dangerous. Return empty unless explicitly enabled by env.
+    if (process.env.ALLOW_PUBLIC_APIKEY !== 'true') {
+      // Temporary protective behavior: do not leak API key to browsers.
+      return res.status(403).json({ error: 'Public API key access disabled' });
+    }
+
     const { data: setting, error } = await supabase
       .from('settings')
       .select('value')

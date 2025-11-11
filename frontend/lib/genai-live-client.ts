@@ -177,20 +177,7 @@ export class GenAILiveClient {
       this.session!.sendRealtimeInput({ media: chunk });
     });
 
-    let hasAudio = false;
-    let hasVideo = false;
-    for (let i = 0; i < chunks.length; i++) {
-      const ch = chunks[i];
-      if (ch.mimeType.includes('audio')) hasAudio = true;
-      if (ch.mimeType.includes('image')) hasVideo = true;
-      if (hasAudio && hasVideo) break;
-    }
-
-    let message = 'unknown';
-    if (hasAudio && hasVideo) message = 'audio + video';
-    else if (hasAudio) message = 'audio';
-    else if (hasVideo) message = 'video';
-    this.log(`client.realtimeInput`, message);
+    // Убрали избыточные логи realtimeInput
   }
 
   public sendToolResponse(toolResponse: LiveClientToolResponse) {
@@ -226,7 +213,7 @@ export class GenAILiveClient {
       const anyMsg = message as any;
       const usage = anyMsg.usageMetadata || anyMsg.serverContent?.usageMetadata;
       if (usage) {
-        this.log('server.usage', usage);
+        // Убрали избыточный лог server.usage
         this.emit('usage', usage);
       }
     } catch (err) {
@@ -255,7 +242,7 @@ export class GenAILiveClient {
         return;
       }
       if ('turnComplete' in serverContent) {
-        this.log('server.send', 'turnComplete');
+        // Убрали избыточный лог turnComplete
         this.emit('turncomplete');
       }
 
@@ -272,7 +259,7 @@ export class GenAILiveClient {
           if (b64) {
             const data = base64ToArrayBuffer(b64);
             this.emit('audio', data);
-            this.log(`server.audio`, `buffer (${data.byteLength})`);
+            // Удалили избыточный лог audio buffer
           }
         });
         if (!otherParts.length) {
@@ -283,11 +270,11 @@ export class GenAILiveClient {
 
         const content: LiveServerContent = { modelTurn: { parts } };
         this.emit('content', content);
-        this.log(`server.content`, message);
+        // Убрали избыточный лог server.content
       } else {
         // Message contains serverContent but no modelTurn (e.g. only turnComplete or usageMetadata).
         // These are valid lifecycle messages (usage, end-of-turn) and should not be treated as errors.
-        this.log('server.nocontent', message);
+        // Убрали избыточный лог server.nocontent
         // emit a lightweight content event so UI can react if needed (no parts)
         this.emit('content', { serverContent: { parts: [] } } as any);
         return;
@@ -363,12 +350,12 @@ export class GenAILiveClient {
       // ignore any errors while writing logs
     }
 
-    // Also mirror to console for immediate visibility
-    try {
-      // eslint-disable-next-line no-console
-      console.debug('[GenAI Log]', entry.type, entry.message);
-    } catch (err) {
-      // noop
-    }
+    // Отключили console.debug логи для чистоты консоли
+    // try {
+    //   // eslint-disable-next-line no-console
+    //   console.debug('[GenAI Log]', entry.type, entry.message);
+    // } catch (err) {
+    //   // noop
+    // }
   }
 }

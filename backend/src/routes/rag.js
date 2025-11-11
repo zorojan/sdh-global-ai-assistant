@@ -15,6 +15,9 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+// Кеш для быстрых ответов (в памяти)
+const responseCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 минут
 
 // Функция генерации эмбеддингов
 async function generateEmbedding(text) {
@@ -45,25 +48,24 @@ async function generateResponse(query, context, language = 'hy-AM') {
         
         // Системное сообщение в зависимости от языка
         const systemMessages = {
-            'hy-AM': 'Դուք FSM (Ֆինանսական համակարգի հաշտարար) AI օգնականն եք: Պատասխանեք հարցերին հիմնվելով տրամադրված տեղեկատվության վրա: Պատասխանները տվեք հայերեն լեզվով, լինեն հստակ, ճիշտ և օգտակար:',
-            'en-US': 'You are FSM (Financial System Ombudsman) AI assistant. Answer questions based on the provided information. Give clear, accurate and helpful responses in English.',
-            'ru-RU': 'Вы AI-помощник FSM (Финансовый омbudsman). Отвечайте на вопросы основываясь на предоставленной информации. Давайте четкие, точные и полезные ответы на русском языке.'
+            'hy-AM': 'Դուք FSM (Ֆինանսական համակարգի հաշտարար) AI օգնականն եք: ԿԱՐԵՎՈՐ: Պատասխանեք ՄԻԱՅՆ տրամադրված տեղեկատվության հիման վրա: Եթե տեղեկատվությունում կա ճշգրիտ պատասխան, օգտագործեք այն բառացիորեն: ՄԻ ՓՈԽԵՔ բովանդակությունը:',
+            'en-US': 'You are FSM (Financial System Ombudsman) AI assistant. IMPORTANT: Answer ONLY based on the provided information. If there is an exact answer in the information, use it verbatim. DO NOT change the content.',
+            'ru-RU': 'Вы AI-помощник FSM (Финансовый омbudsman). ВАЖНО: Отвечайте ТОЛЬКО на основе предоставленной информации. Если в информации есть точный ответ, используйте его дословно. НЕ ИЗМЕНЯЙТЕ содержание.'
         };
 
         const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-            model: "gpt-4",
+            model: "gpt-3.5-turbo",
             messages: [
                 {
-                    role: "system",
-                    content: systemMessages[language] || systemMessages['hy-AM']
-                },
-                {
                     role: "user",
-                    content: `Հարց: ${query}\n\nՏեղեկատվություն FSM բազայից:\n${context}\n\nՊատասխան:`
+                    content: `${context}\n\nՀարց: ${query}\n\nՊատասխան (copy exact text):`
                 }
             ],
-            temperature: 0.7,
-            max_tokens: 1000
+            temperature: 0,
+            top_p: 0.1,
+            frequency_penalty: 0.0,
+            presence_penalty: 0.0,
+            max_tokens: 200
         }, {
             headers: {
                 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -167,6 +169,8 @@ router.post('/search', async (req, res) => {
  * Генерация ответа на основе векторного поиска + GPT
  */
 router.post('/generate', async (req, res) => {
+    const startTime = Date.now();
+    
     try {
         const {
             query,
@@ -183,6 +187,20 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({
                 error: 'Query is required',
                 message: 'Հարց պարտադիր է'
+            });
+        }
+
+        // БЫСТРЫЙ КЕШ - проверяем сначала кеш
+        const cacheKey = `${query}_${company_id}_${language}`;
+        const cached = responseCache.get(cacheKey);
+        
+        if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+            const duration = Date.now() - startTime;
+            console.log(`⚡ RAG CACHE HIT: "${query}" (${duration}ms)`);
+            return res.json({
+                ...cached.response,
+                cached: true,
+                generation_time_ms: duration
             });
         }
 
@@ -217,15 +235,43 @@ router.post('/generate', async (req, res) => {
 
         console.log(`🔍 RAG: Найдено ${relevantResults.length} релевантных документов`);
 
-        // Шаг 2: Формируем контекст из найденных документов
-        const context = relevantResults
-            .map((result, index) => `${index + 1}. ${result.title}\n${result.content}`)
+        // Шаг 2: Формируем контекст только из высокорелевантных документов (similarity > 0.8)
+        const highRelevantResults = relevantResults.filter(r => r.similarity > 0.8);
+        
+        // Берем только топ-2 результата для минимизации контекста
+        const topResults = highRelevantResults.slice(0, 2);
+        
+        const context = topResults
+            .map((result, index) => `Document ${index + 1}: ${result.content}`)
             .join('\n\n---\n\n');
 
-        // Шаг 3: Генерируем ответ через GPT
+        console.log(`🔍 RAG: Отфильтровано ${topResults.length} высокорелевантных документов (similarity > 0.8)`);
+
+        // Шаг 3: Генерируем ответ - для очень высокого similarity возвращаем напрямую
         let answer;
         if (context.trim()) {
-            answer = await generateResponse(query, context, language);
+            // Если есть результат с очень высокой точностью (> 0.90), возвращаем напрямую
+            const bestResult = topResults[0];
+            console.log(`🔍 RAG DEBUG: topResults.length=${topResults.length}, bestResult=${!!bestResult}`);
+            if (bestResult) {
+                console.log(`🔍 RAG DEBUG: similarity=${bestResult.similarity}, threshold=0.90`);
+            }
+            
+            if (bestResult && bestResult.similarity > 0.90) {
+                // Извлекаем ответ из контента (после "Պատասխան:")
+                const contentMatch = bestResult.content.match(/Պատասխան:\s*(.+)/s);
+                console.log(`🔍 RAG DEBUG: contentMatch=${!!contentMatch}`);
+                if (contentMatch) {
+                    answer = contentMatch[1].trim();
+                    console.log(`🎯 RAG: Прямой ответ из базы (similarity: ${bestResult.similarity})`);
+                } else {
+                    console.log(`⚠️ RAG: Regex не сработал, используем OpenAI`);
+                    answer = await generateResponse(query, context, language);
+                }
+            } else {
+                console.log(`⚠️ RAG: Similarity слишком низкая или нет результатов, используем OpenAI`);
+                answer = await generateResponse(query, context, language);
+            }
         } else {
             // Если релевантных документов не найдено
             const noResultsMessages = {
@@ -236,7 +282,8 @@ router.post('/generate', async (req, res) => {
             answer = noResultsMessages[language] || noResultsMessages['hy-AM'];
         }
 
-        console.log(`✅ RAG: Ответ сгенерирован (${answer.length} символов)`);
+        const duration = Date.now() - startTime;
+        console.log(`✅ RAG: Ответ сгенерирован (${answer.length} символов, ${duration}ms)`);
 
         // Формируем ответ
         const response = {
@@ -245,6 +292,7 @@ router.post('/generate', async (req, res) => {
             answer,
             language,
             search_results_count: relevantResults.length,
+            generation_time_ms: duration,
             generation_params: {
                 search_limit,
                 threshold,
@@ -252,6 +300,15 @@ router.post('/generate', async (req, res) => {
                 company_id
             }
         };
+
+        // Кешируем результат для быстрых повторных запросов
+        if (topResults.length > 0 && topResults[0].similarity > 0.85) {
+            responseCache.set(cacheKey, {
+                response: response,
+                timestamp: Date.now()
+            });
+            console.log(`💾 RAG: Результат закеширован для быстрого доступа`);
+        }
 
         // Добавляем источники если запрошены
         if (include_sources) {
@@ -387,6 +444,115 @@ router.get('/health', async (req, res) => {
             status: 'unhealthy',
             error: error.message,
             timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * POST /api/rag/fast-search
+ * Сверхбыстрый поиск без генерации для real-time аудио
+ */
+router.post('/fast-search', async (req, res) => {
+    const startTime = Date.now();
+    
+    try {
+        const { query, company_id, language = 'hy-AM' } = req.body;
+        
+        if (!query) {
+            return res.status(400).json({ error: 'Query required' });
+        }
+
+        // Быстрый кеш-чек
+        const cacheKey = `fast_${query}_${company_id}`;
+        const cached = responseCache.get(cacheKey);
+        
+        if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+            return res.json({ 
+                ...cached.response, 
+                cached: true,
+                search_time_ms: Date.now() - startTime 
+            });
+        }
+
+        // Только векторный поиск, без OpenAI
+        const queryEmbedding = await generateEmbedding(query);
+        const { data: results, error } = await supabase.rpc('match_knowledge_base', {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.7, // Понижено с 0.85 для лучшего поиска
+            match_count: 1 // Только лучший результат
+        });
+
+        if (error) throw error;
+
+        console.log(`🔍 RAG Fast Search: query="${query}" found ${results?.length || 0} results`);
+        if (results?.length > 0) {
+            console.log('First result:', {
+                similarity: results[0].similarity,
+                company_id: results[0].company_id,
+                language: results[0].language,
+                title: results[0].title?.substring(0, 50)
+            });
+        }
+
+        let answer = null;
+        const filteredResults = results?.filter(r => 
+            r.company_id === company_id && 
+            r.language === language &&
+            r.similarity > 0.75 // Понижено с 0.90 для лучшего поиска
+        ) || [];
+
+        console.log(`🔍 RAG Fast Search: after filtering ${filteredResults.length} results`);
+        if (filteredResults.length > 0) {
+            console.log('Filtered result:', {
+                similarity: filteredResults[0].similarity,
+                title: filteredResults[0].title?.substring(0, 50)
+            });
+        }
+
+        // Если есть очень точный результат, возвращаем напрямую
+        if (filteredResults.length > 0) {
+            const bestResult = filteredResults[0];
+            const contentMatch = bestResult.content.match(/Պատասխան:\s*(.+)/s);
+            if (contentMatch) {
+                answer = contentMatch[1].trim();
+            }
+        }
+
+        const response = {
+            success: !!answer,
+            query,
+            answer,
+            similarity: filteredResults[0]?.similarity || 0,
+            search_time_ms: Date.now() - startTime,
+            fast_mode: true,
+            // Debug info
+            debug: {
+                total_results: results?.length || 0,
+                filtered_results: filteredResults.length,
+                first_result: results?.[0] ? {
+                    similarity: results[0].similarity,
+                    company_id: results[0].company_id,
+                    language: results[0].language
+                } : null
+            }
+        };
+
+        // Кешируем быстрый результат
+        if (answer) {
+            responseCache.set(cacheKey, {
+                response: response,
+                timestamp: Date.now()
+            });
+        }
+
+        res.json(response);
+
+    } catch (error) {
+        console.error('❌ Fast RAG search error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Fast search failed',
+            search_time_ms: Date.now() - startTime 
         });
     }
 });
