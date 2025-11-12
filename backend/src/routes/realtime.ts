@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../database/supabase';
 import fetch from 'node-fetch';
+import { createSessionFromOffer } from '../services/rt_adapter_openai';
 
 const router = express.Router();
 
@@ -93,9 +94,7 @@ router.post('/session', express.raw({ type: 'application/sdp', limit: '10mb' }),
     }
 
     console.log('📡 Using voice:', selectedVoice, 'language:', selectedLanguage);
-    console.log('🏢 Company context loaded for OpenAI realtime');
-
-    console.log('📡 Forwarding SDP to OpenAI Realtime API...');
+    console.log('📡 Forwarding SDP to OpenAI Realtime API via service helper...');
 
     // Create enhanced instructions with company context
     let instructions = '';
@@ -111,13 +110,7 @@ Company Context:
 
 You are ${agentData.name} representing ${companyInfo.company_name || 'SDH Global'}.`;
     } else {
-      instructions = `You are a helpful AI assistant representing ${companyInfo.company_name || 'SDH Global'}.
-
-Company Context:
-- Company Name: ${companyInfo.company_name || 'SDH Global'}
-- Company Description: ${companyInfo.company_description || ''}
-- Website: ${companyInfo.company_website || ''}
-- Contact/Address Info: ${companyInfo.company_documents || ''}`;
+      instructions = `You are a helpful AI assistant representing ${companyInfo.company_name || 'SDH Global'}.\n\nCompany Context:\n- Company Name: ${companyInfo.company_name || 'SDH Global'}\n- Company Description: ${companyInfo.company_description || ''}\n- Website: ${companyInfo.company_website || ''}\n- Contact/Address Info: ${companyInfo.company_documents || ''}`;
     }
 
     // Add language-specific instructions and welcome messages
@@ -147,42 +140,28 @@ WELCOME MESSAGE: When the conversation starts, immediately greet the user warmly
 
     console.log('📡 Session config:', JSON.stringify(sessionConfig, null, 2));
 
-    // Create JSON request body per OpenAI Realtime API documentation
-    const requestBody = {
-      sdp: offerSdp,
-      session: sessionConfig
-    };
+    try {
+      const responseData: any = await createSessionFromOffer(offerSdp, sessionConfig, apiKey);
 
-    // Forward SDP to OpenAI Realtime API using correct JSON format
-    const openaiResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text();
-      console.error('❌ OpenAI Realtime API error:', openaiResponse.status, errorText);
-      return res.status(openaiResponse.status).json({ 
-        error: `OpenAI Realtime API error: ${openaiResponse.status} ${errorText}` 
+      console.log('✅ OpenAI Realtime response received via helper:', {
+        hasCallId: !!responseData.call_id,
+        hasSdp: !!responseData.sdp,
+        sdpLength: responseData.sdp?.length
       });
-    }
 
-    // Parse JSON response from OpenAI
-    const responseData = await openaiResponse.json() as any;
-    console.log('✅ OpenAI Realtime response received:', {
-      hasCallId: !!responseData.call_id,
-      hasSdp: !!responseData.sdp,
-      sdpLength: responseData.sdp?.length
-    });
-    
-    // Extract SDP answer - try both possible field names from documentation
-    const answerSdp = responseData.sdp || responseData.sdp_answer;
-    
-    if (!answerSdp) {
+      const answerSdp = responseData.sdp || responseData.sdp_answer;
+      if (!answerSdp) {
+        console.error('❌ No SDP answer in OpenAI response:', responseData);
+        return res.status(500).json({ error: 'No SDP answer received from OpenAI' });
+      }
+
+      console.log('✅ SDP answer forwarded to client, length:', answerSdp.length);
+      res.setHeader('Content-Type', 'application/sdp');
+      res.send(answerSdp);
+    } catch (err: any) {
+      console.error('❌ Error calling createSessionFromOffer:', err);
+      return res.status(500).json({ error: err.message || 'OpenAI Realtime call failed' });
+    }
       console.error('❌ No SDP answer in OpenAI response:', responseData);
       return res.status(500).json({ error: 'No SDP answer received from OpenAI' });
     }
