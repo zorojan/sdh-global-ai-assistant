@@ -18,6 +18,8 @@ type BasicFaceProps = {
   color?: string;
   /** The URL of the avatar image. */
   avatarUrl?: string;
+  /** Preloaded avatar image element. */
+  avatarImage?: HTMLImageElement | null;
   /** Whether the face should be in an "active" state (e.g., tilting). */
   isActive?: boolean;
 };

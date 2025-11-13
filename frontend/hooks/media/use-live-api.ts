@@ -24,10 +24,10 @@ import { AudioStreamer } from '../../lib/audio-streamer';
 import { audioContext } from '../../lib/utils';
 import VolMeterWorket from '../../lib/worklets/vol-meter';
 import { DEFAULT_LIVE_API_MODEL } from '../../lib/constants';
-import genaiLogger from '../../lib/genai-logger';
 
 export type UseLiveApiResults = {
   ws: WebSocket | null;
+  client?: any;
   setConfig: (config: LiveConnectConfig) => void;
   config: LiveConnectConfig;
   connect: () => Promise<void>;
@@ -113,7 +113,6 @@ export function useLiveApi({ agentId, model = DEFAULT_LIVE_API_MODEL }: { agentI
             setConnected(true);
             setLastError(null);
             settled = true;
-            try { genaiLogger.log('ws', { event: 'open', sessionId: sid, wsUrl: wurl }); } catch(e){}
             resolve();
           };
 
@@ -122,7 +121,7 @@ export function useLiveApi({ agentId, model = DEFAULT_LIVE_API_MODEL }: { agentI
             const codeOrReason = event?.reason || event?.code || 'unknown';
             setConnected(false);
             setLastError(`Connection closed: ${codeOrReason}`);
-            try { genaiLogger.log('ws', { event: 'close', sessionId: sid, code: event?.code, reason: event?.reason }); } catch(e){}
+            // closed
             if (!settled) {
               settled = true;
               reject(new Error(`WebSocket closed before open: ${codeOrReason}`));
@@ -132,7 +131,6 @@ export function useLiveApi({ agentId, model = DEFAULT_LIVE_API_MODEL }: { agentI
 
           socket.onerror = (ev) => {
             setLastError('WebSocket error');
-            try { genaiLogger.log('ws', { event: 'error', sessionId: sid, info: ev }); } catch(e){}
             if (!settled) {
               settled = true;
               reject(new Error('WebSocket error'));
@@ -141,7 +139,6 @@ export function useLiveApi({ agentId, model = DEFAULT_LIVE_API_MODEL }: { agentI
 
           socket.onmessage = (event) => {
             // handle incoming audio/text from backend
-            try { genaiLogger.logRaw({ direction: 'inbound', sessionId: sid, data: typeof event.data === 'string' ? event.data : '[binary]' }); } catch(e){}
             // Example: if (audioStreamerRef.current) audioStreamerRef.current.addPCM16(...)
           };
         } catch (err) {

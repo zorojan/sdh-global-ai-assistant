@@ -11,8 +11,13 @@ import { audioContext } from '../../lib/utils';
 import VolMeterWorket from '../../lib/worklets/vol-meter';
 import { DEFAULT_LIVE_API_MODEL } from '../../lib/constants';
 
+// Runtime type-guard for clients that implement simple event methods
+function hasOnOff(c: any): c is { on: (...args: any[]) => any; off: (...args: any[]) => any } {
+  return c && typeof c.on === 'function' && typeof c.off === 'function';
+}
+
 export type UseLiveApiResults = {
-  client: GenAILiveClient;
+  client: GenAILiveClient | GenAILiveProxyClient | any;
   setConfig: (config: LiveConnectConfig) => void;
   config: LiveConnectConfig;
 
@@ -101,27 +106,75 @@ export function useLiveApiWidget({
       }
     };
 
-    const onAudio = (data: ArrayBuffer) => {
-      if (audioStreamerRef.current) {
+    const onAudio = (payload: ArrayBuffer | { data: ArrayBuffer; mimeType?: string }) => {
+      if (!audioStreamerRef.current) return;
+
+      // Handle two shapes: raw ArrayBuffer (assumed PCM16) or object with mimeType
+      if (payload instanceof ArrayBuffer) {
+        audioStreamerRef.current.addPCM16(new Uint8Array(payload));
+        return;
+      }
+
+      // payload is object with data and optional mimeType
+      const data = (payload as any).data as ArrayBuffer;
+      const mime = (payload as any).mimeType as string | undefined;
+
+      if (!data) return;
+
+      // If PCM with sample rate metadata, adjust streamer sampleRate then add PCM
+      if (mime && mime.startsWith('audio/pcm')) {
+        try {
+          const m = /rate=(\d+)/.exec(mime || '');
+          if (m && m[1]) {
+            const sr = parseInt(m[1], 10);
+            if (sr && audioStreamerRef.current) audioStreamerRef.current.setSampleRate(sr);
+          }
+        } catch (e) {}
         audioStreamerRef.current.addPCM16(new Uint8Array(data));
+        return;
+      }
+
+      // Otherwise treat as encoded container (mp3/ogg/webm). Decode and play via AudioContext
+      try {
+        const ctx = (audioStreamerRef.current as any).context as AudioContext;
+        if (ctx && ctx.decodeAudioData) {
+          // decodeAudioData expects an ArrayBuffer
+          ctx.decodeAudioData(data.slice(0), (decoded) => {
+            const src = ctx.createBufferSource();
+            src.buffer = decoded;
+            src.connect(ctx.destination);
+            try { src.start(); } catch (e) { console.warn('Failed to start decoded audio source', e); }
+          }, (err) => {
+            console.warn('Widget: failed to decode audio payload', err);
+          });
+        }
+      } catch (e) {
+        console.warn('Widget: error playing encoded audio payload', e);
       }
     };
 
-    // Bind event listeners
-    client.on('open', onOpen);
-    client.on('close', onClose);
-    client.on('error', onError);
-    client.on('interrupted', stopAudioStreamer);
-    client.on('audio', onAudio);
+    // Bind event listeners (guarded because proxy and SDK clients differ)
+    if (hasOnOff(client)) {
+      const evtClient = client as any;
+      evtClient.on('open', onOpen);
+      evtClient.on('close', onClose);
+      evtClient.on('error', onError);
+      evtClient.on('interrupted', stopAudioStreamer);
+      evtClient.on('audio', onAudio);
 
-    return () => {
-      // Clean up event listeners
-      client.off('open', onOpen);
-      client.off('close', onClose);
-      client.off('error', onError);
-      client.off('interrupted', stopAudioStreamer);
-      client.off('audio', onAudio);
-    };
+      return () => {
+        // Clean up event listeners
+        try { evtClient.off('open', onOpen); } catch (e) {}
+        try { evtClient.off('close', onClose); } catch (e) {}
+        try { evtClient.off('error', onError); } catch (e) {}
+        try { evtClient.off('interrupted', stopAudioStreamer); } catch (e) {}
+        try { evtClient.off('audio', onAudio); } catch (e) {}
+      };
+    }
+
+    // If client has no on/off methods, log and no-op cleanup
+    console.warn('Widget: client does not implement .on/.off event methods');
+    return () => {};
   }, [client]);
 
   const connect = useCallback(async () => {
@@ -161,25 +214,32 @@ export function useLiveApiWidget({
             const onOpen = () => {
               if (settled) return;
               settled = true;
-              try { client.off('open', onOpen); } catch (e) {}
+              try { (client as any).off('open', onOpen); } catch (e) {}
               resolve(true);
             };
 
             // If already connected state is true, resolve immediately
             if ((connected)) {
-              try { client.off('open', onOpen); } catch (e) {}
+              try { if (hasOnOff(client)) (client as any).off('open', onOpen); } catch (e) {}
               return resolve(true);
             }
 
-            client.on('open', onOpen);
+            if (hasOnOff(client)) {
+              const evtClient = client as any;
+              evtClient.on('open', onOpen);
 
-            // Timeout after 3500ms
-            setTimeout(() => {
-              if (settled) return;
-              settled = true;
-              try { client.off('open', onOpen); } catch (e) {}
-              resolve(false);
-            }, 3500);
+              // Timeout after 3500ms
+              setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                try { evtClient.off('open', onOpen); } catch (e) {}
+                resolve(false);
+              }, 3500);
+            } else {
+              // Client has no event emitter; we can't wait for 'open' event.
+              // Resolve based on current connected state.
+              return resolve(!!connected);
+            }
           });
 
           if (!opened) {

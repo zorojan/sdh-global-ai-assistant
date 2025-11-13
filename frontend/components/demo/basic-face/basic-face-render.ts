@@ -7,6 +7,7 @@ type BasicFaceProps = {
   mouthScale: number;
   eyeScale: number;
   color?: string;
+  avatarImage?: HTMLImageElement | null;
 };
 
 const eye = (
@@ -41,6 +42,26 @@ export function renderBasicFace(props: BasicFaceProps) {
   ctx.beginPath();
   ctx.arc(width / 2, height / 2, width / 2 - 20, 0, Math.PI * 2);
   ctx.fill();
+
+  // Optionally draw avatar image centered inside the face
+  if (props.avatarImage) {
+    try {
+      const img = props.avatarImage;
+      const imgSize = Math.min(width, height) * 0.6;
+      const x = (width - imgSize) / 2;
+      const y = (height - imgSize) / 2;
+      ctx.save();
+      // Clip to circle to keep avatar inside face
+      ctx.beginPath();
+      ctx.arc(width / 2, height / 2, imgSize / 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(img, x, y, imgSize, imgSize);
+      ctx.restore();
+    } catch (e) {
+      // ignore image drawing errors
+    }
+  }
 
   const eyesCenter = [width / 2, height / 2.425];
   const eyesOffset = width / 15;

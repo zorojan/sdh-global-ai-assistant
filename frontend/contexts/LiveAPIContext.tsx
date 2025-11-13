@@ -32,7 +32,8 @@ export const LiveAPIProvider: FC<LiveAPIProviderProps> = ({
   apiKey,
   children,
 }) => {
-  const liveAPI = useLiveApi({ apiKey });
+  // Map `apiKey` from provider to `agentId` expected by the hook
+  const liveAPI = useLiveApi({ agentId: apiKey });
 
   return (
     <LiveAPIContext.Provider value={liveAPI}>
