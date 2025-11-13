@@ -9,7 +9,7 @@ import EventEmitter from 'eventemitter3';
 export type ProxyClientEvents = {
   open: () => void;
   close: (e: any) => void;
-  audio: (data: ArrayBuffer) => void;
+  audio: (data: ArrayBuffer | { data: ArrayBuffer; mimeType?: string }) => void;
   content: (data: any) => void;
   error: (e: any) => void;
   setupcomplete: () => void;
@@ -76,7 +76,13 @@ export class GenAILiveProxyClient {
             const text = msg.text || '';
             if (msg.audio && Array.isArray(msg.audio)) {
               const arr = new Uint8Array(msg.audio);
-              this.ee.emit('audio', arr.buffer);
+              // Helpful debug log for audio arrival
+              try { console.debug('GenAILiveProxyClient: audio message received, bytes=', arr.length, 'mime=', msg.audioMimeType); } catch (e) {}
+              if (msg.audioMimeType) {
+                this.ee.emit('audio', { data: arr.buffer, mimeType: msg.audioMimeType });
+              } else {
+                this.ee.emit('audio', arr.buffer);
+              }
             }
             this.ee.emit('content', { serverContent: { modelTurn: { parts: [{ text }] } } });
           } else {

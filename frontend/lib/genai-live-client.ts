@@ -41,8 +41,10 @@ export interface StreamingLog {
  * Each event corresponds to a specific message from GenAI or client state change.
  */
 export interface LiveClientEventTypes {
-  // Emitted when audio data is received
-  audio: (data: ArrayBuffer) => void;
+  // Emitted when audio data is received. May be an ArrayBuffer (raw PCM) or
+  // an object { data: ArrayBuffer, mimeType?: string } so consumers can
+  // handle encoded formats and sample-rate metadata.
+  audio: (data: ArrayBuffer | { data: ArrayBuffer; mimeType?: string }) => void;
   // Emitted when the connection closes
   close: (event: CloseEvent) => void;
   // Emitted when content is received from the server
@@ -199,14 +201,7 @@ export class GenAILiveClient {
 
   protected onMessage(message: LiveServerMessage) {
     // store raw incoming messages for debugging (window.__GENAI_RAW__)
-    try {
-      const gw = globalThis as any;
-      gw.__GENAI_RAW__ = gw.__GENAI_RAW__ || [];
-      gw.__GENAI_RAW__.push(message);
-      if (gw.__GENAI_RAW__.length > 1000) gw.__GENAI_RAW__.splice(0, gw.__GENAI_RAW__.length - 1000);
-    } catch (err) {
-      // ignore
-    }
+    // Debug raw messages removed in production build - no global writes
 
     // If the server provided usage metadata at the message level, emit it for UI
     try {
@@ -249,17 +244,16 @@ export class GenAILiveClient {
       if (serverContent.modelTurn) {
         let parts: Part[] = serverContent.modelTurn.parts || [];
 
-        const audioParts = parts.filter(p =>
-          p.inlineData?.mimeType?.startsWith('audio/pcm')
-        );
-        const base64s = audioParts.map(p => p.inlineData?.data);
+        const audioParts = parts.filter(p => p.inlineData?.mimeType && p.inlineData.mimeType.startsWith('audio/'));
         const otherParts = difference(parts, audioParts);
 
-        base64s.forEach(b64 => {
+        // Emit each audio part with its mimeType so playback can handle resampling/decoding
+        audioParts.forEach(p => {
+          const b64 = p.inlineData?.data;
           if (b64) {
             const data = base64ToArrayBuffer(b64);
-            this.emit('audio', data);
-            // Удалили избыточный лог audio buffer
+            const mime = p.inlineData?.mimeType;
+            this.emit('audio', { data, mimeType: mime });
           }
         });
         if (!otherParts.length) {
@@ -330,25 +324,7 @@ export class GenAILiveClient {
     this.emit('log', entry as any);
 
     // Also write to a global in-browser log for easier debugging in the frontend
-    try {
-  // @ts-ignore - attach to window for debugging
-  const gw = (globalThis as any);
-  gw.__GENAI_LOGS__ = gw.__GENAI_LOGS__ || [];
-  const g = gw.__GENAI_LOGS__;
-      g.push(entry);
-      // keep logs bounded
-      if (g.length > 1000) g.splice(0, g.length - 1000);
-
-      // persist a lightweight copy to localStorage so logs survive page reloads
-      try {
-        const light = g.slice(-500).map((e: any) => ({ t: e.type, d: e.date, m: typeof e.message === 'string' ? e.message : JSON.stringify(e.message) }));
-        localStorage.setItem('genai_logs', JSON.stringify(light));
-      } catch (err) {
-        // ignore localStorage errors (e.g., in private mode)
-      }
-    } catch (err) {
-      // ignore any errors while writing logs
-    }
+    // Removed global in-browser logging to prevent debug side-effects (no localStorage writes)
 
     // Отключили console.debug логи для чистоты консоли
     // try {

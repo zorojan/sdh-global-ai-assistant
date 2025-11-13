@@ -24,7 +24,6 @@ import { memo, ReactNode, useEffect, useRef, useState } from 'react';
 import { AudioRecorder } from '../../../lib/audio-recorder';
 
 import { useLiveAPIContext } from '../../../contexts/LiveAPIContext';
-import genaiLogger from '../../../lib/genai-logger';
 import { useUI } from '@/lib/state';
 
 export type ControlTrayProps = {
@@ -60,50 +59,68 @@ function ControlTray({ children }: ControlTrayProps) {
   }, [connected]);
 
   useEffect(() => {
-    const onData = (base64: string) => {
-      try { genaiLogger.log('audio', { direction: 'outbound', sizeKB: Math.round(base64.length / 1024) }); } catch(e){}
-      // Prefer client.sendRealtimeInput when available (legacy genai-live client)
-      if (client && typeof client.sendRealtimeInput === 'function') {
-        client.sendRealtimeInput([
-          {
-            mimeType: 'audio/pcm;rate=16000',
-            data: base64,
-          },
-        ]);
-        return;
-      }
+    // Buffer audio chunks and send in batches to reduce POST frequency.
+    const pendingChunks: string[] = [];
+    const FLUSH_INTERVAL_MS = 250; // flush every 250ms
+    const MAX_CHUNKS_PER_BATCH = 8; // or flush when exceeded
 
-      // If using backend proxy session, prefer sending audio via backend POST /api/gemini/live/send
+    const base64ToUint8 = (b64: string) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const uint8ToBase64 = (u8: Uint8Array) => btoa(String.fromCharCode(...u8));
+
+    const combineBase64Chunks = (chunks: string[]) => {
+      if (!chunks || chunks.length === 0) return '';
+      if (chunks.length === 1) return chunks[0];
+      const parts = chunks.map(base64ToUint8);
+      const totalLen = parts.reduce((s, p) => s + p.length, 0);
+      const out = new Uint8Array(totalLen);
+      let offset = 0;
+      for (const p of parts) {
+        out.set(p, offset);
+        offset += p.length;
+      }
+      return uint8ToBase64(out);
+    };
+
+    const flushChunks = async (isFinal = false) => {
+      if (pendingChunks.length === 0) return;
+      // take up to MAX_CHUNKS_PER_BATCH
+      const batch = pendingChunks.splice(0, MAX_CHUNKS_PER_BATCH);
+      const combined = combineBase64Chunks(batch);
+      if (!combined) return;
+
       try {
+        const sampleRate = audioRecorder?.audioContext?.sampleRate || 16000;
         if (sessionId) {
-          // send audio chunk to backend send endpoint
-          try { genaiLogger.log('audio', { direction: 'outbound', via: 'backend-send', sessionId, sizeKB: Math.round(base64.length / 1024) }); } catch(e){}
-          fetch(`${apiBase}/api/gemini/live/send`, {
+          // send combined payload to backend; include actual sample rate in contentType
+          await fetch(`${apiBase}/api/gemini/live/send`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, audioBase64: base64, contentType: 'audio' })
-          }).then(async (r) => {
-            try {
-              const json = await r.json().catch(() => null);
-              try { genaiLogger.logRaw({ direction: 'outbound', sessionId, data: { endpoint: `${apiBase}/api/gemini/live/send`, body: { audioSizeKB: Math.round(base64.length / 1024) }, response: json } }); } catch(e){}
-            } catch (err) {
-              console.warn('ControlTray: /api/gemini/live/send response parse failed', err);
-            }
-          }).catch((err) => {
-            console.warn('ControlTray: failed to POST audio to backend /api/gemini/live/send', err);
+            body: JSON.stringify({ sessionId, audioBase64: combined, contentType: `audio/pcm;rate=${sampleRate}` })
           });
-          return;
-        }
-
-        // If using backend WS proxy and no sessionId available, fall back to trying ws send
-        if (ws && (ws as WebSocket).readyState === WebSocket.OPEN) {
-          const msg = { type: 'input_audio_buffer', mimeType: 'audio/pcm;rate=16000', data: base64 };
+        } else if (ws && (ws as WebSocket).readyState === WebSocket.OPEN) {
+          const msg = { type: 'input_audio_buffer', mimeType: `audio/pcm;rate=${sampleRate}`, data: combined };
           (ws as WebSocket).send(JSON.stringify(msg));
-          try { genaiLogger.logRaw({ direction: 'outbound', sessionId: undefined, data: msg }); } catch(e){}
-          return;
         }
       } catch (e) {
-        console.warn('ControlTray: failed to send audio via backend-send/ws/client', e);
+        console.warn('ControlTray: failed to POST batched audio', e);
+      }
+
+      // If there are more chunks queued, schedule next immediate flush
+      if (pendingChunks.length > 0) setTimeout(() => flushChunks(), 0);
+    };
+
+    const flushTimer = setInterval(() => flushChunks(false), FLUSH_INTERVAL_MS);
+
+    const onData = (base64: string) => {
+      // enqueue incoming chunk
+      try {
+        pendingChunks.push(base64);
+      } catch (e) {
+        console.warn('ControlTray: failed to queue audio chunk', e);
+      }
+      // flush if exceeded
+      if (pendingChunks.length >= MAX_CHUNKS_PER_BATCH) {
+        flushChunks();
       }
     };
     if (connected && !muted && audioRecorder) {
@@ -111,8 +128,13 @@ function ControlTray({ children }: ControlTrayProps) {
     } else {
       audioRecorder.stop();
     }
+
     return () => {
-      audioRecorder.off('data', onData);
+      // flush remaining chunks before cleanup
+      clearInterval(flushTimer);
+      try { audioRecorder.off('data', onData); } catch (e) {}
+      // final flush
+      flushChunks(true).catch(() => {});
     };
   }, [connected, client, muted, audioRecorder]);
 

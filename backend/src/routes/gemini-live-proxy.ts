@@ -13,6 +13,34 @@ import { processFallbackAudio } from '../services/fallback/fallbackHandler';
 
 const router = express.Router();
 
+// Per-session fallback buffering to avoid calling external STT/LLM/TTS for every small chunk.
+const fallbackBuffers: Map<string, { chunks: string[]; contentType?: string; timer?: NodeJS.Timeout; sentPlaceholder?: boolean }> = new Map();
+const FALLBACK_DEBOUNCE_MS = 700; // wait this long since last chunk before sending to fallback
+const FALLBACK_MAX_CHUNKS = 12; // flush if too many chunks accumulated
+
+// Toggle to completely disable OpenAI fallback even if an OpenAI key is present.
+// Set environment var `ENABLE_OPENAI_FALLBACK=false` to turn off fallback behavior.
+const ENABLE_OPENAI_FALLBACK = process.env.ENABLE_OPENAI_FALLBACK !== 'false';
+
+async function flushFallbackBuffer(sessionId: string) {
+  const entry = fallbackBuffers.get(sessionId);
+  if (!entry || entry.chunks.length === 0) return;
+  // combine base64 chunks into a single base64 payload
+  try {
+    const bufs = entry.chunks.map(b => Buffer.from(b, 'base64'));
+    const combined = Buffer.concat(bufs).toString('base64');
+    const contentType = entry.contentType;
+    // clear before calling to avoid reentrancy
+    entry.chunks = [];
+    entry.sentPlaceholder = false;
+    fallbackBuffers.set(sessionId, entry);
+    // call processing (async, do not await here)
+    processFallbackAudio(sessionManager.getSession(sessionId), combined, contentType).catch((err:any) => console.warn('fallback processing failed', err));
+  } catch (err) {
+    console.warn('flushFallbackBuffer: failed to combine/send', err);
+  }
+}
+
 // Session lifecycle and Google connection handling delegated to sessionManager
 
 /**
@@ -62,7 +90,8 @@ router.get('/test-handshake', async (req: Request, res: Response) => {
     }
 
     const apiKey = settingsData.value;
-    const googleWsUrl = `wss://generativelanguage.googleapis.com/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+    // Use the documented Live API websocket path (v1beta, /ws/ prefix)
+    const googleWsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
     // Attempt a short handshake and capture unexpected-response / error
     const testWs = new WebSocket(googleWsUrl);
@@ -191,10 +220,10 @@ router.get('/probe-ws', async (req: Request, res: Response) => {
 
     const apiKey = settingsData.value;
     const candidates = [
-      // current URL used in code
-      `wss://generativelanguage.googleapis.com/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`,
-      // possible variant without the google.ai namespace
-      `wss://generativelanguage.googleapis.com/v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`,
+      // documented tutorial URL (v1beta, /ws/)
+      `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`,
+      // variant without google.ai namespace (v1beta)
+      `wss://generativelanguage.googleapis.com/ws/v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`,
       // older style endpoints
       `wss://generativelanguage.googleapis.com/v1beta2/stream?key=${apiKey}`,
       `wss://generativelanguage.googleapis.com/v1/stream?key=${apiKey}`
@@ -308,18 +337,42 @@ router.post('/send', async (req: Request, res: Response) => {
         let hasOpenAI = false;
         try {
           const { data: openaiData } = await supabase.from('settings').select('value').eq('key', 'openai_api_key').single();
-          hasOpenAI = !!(openaiData && openaiData.value);
+          hasOpenAI = !!(openaiData && openaiData.value) && ENABLE_OPENAI_FALLBACK;
+          if (!!(openaiData && openaiData.value) && !ENABLE_OPENAI_FALLBACK) {
+            console.log(' Gemini Live Proxy: OpenAI key present but OpenAI fallback is disabled via ENABLE_OPENAI_FALLBACK=false');
+          }
         } catch (e) { /* ignore DB read errors and treat as no key */ }
 
         if (hasOpenAI) {
-          // Send a processing placeholder that the client will ignore for TTS
+          // Buffer audio per-session and debounce the fallback pipeline so we don't call OpenAI for every tiny chunk.
           try {
-            session.onMessageCallback(`[PROCESSING] Processing audio, please wait...`);
-            console.log(' Gemini Live Proxy: Sent processing placeholder to client for session', sessionId);
-          } catch (e) { console.warn(' Gemini Live Proxy: failed to send processing placeholder', (e as any)?.message || e); }
+            let buf = fallbackBuffers.get(sessionId) || { chunks: [], contentType: undefined, timer: undefined, sentPlaceholder: false };
+            // Send a processing placeholder only once per burst
+            if (!buf.sentPlaceholder) {
+              try {
+                session.onMessageCallback(`[PROCESSING] Processing audio, please wait...`);
+                console.log(' Gemini Live Proxy: Sent processing placeholder to client for session', sessionId);
+              } catch (e) { console.warn(' Gemini Live Proxy: failed to send processing placeholder', (e as any)?.message || e); }
+              buf.sentPlaceholder = true;
+            }
 
-          // Start async fallback pipeline (STT -> generate -> TTS)
-          try { processFallbackAudio(session, audioBase64, contentType).catch((err:any) => console.warn('fallback processing failed', err)); } catch (e) { console.warn('fallback processing scheduling failed', (e as any)?.message || e); }
+            if (audioBase64) {
+              buf.chunks.push(audioBase64);
+              if (!buf.contentType) buf.contentType = contentType;
+            }
+
+            // If too many chunks accumulated, flush immediately
+            if (buf.chunks.length >= FALLBACK_MAX_CHUNKS) {
+              if (buf.timer) { clearTimeout(buf.timer); buf.timer = undefined; }
+              fallbackBuffers.set(sessionId, buf);
+              flushFallbackBuffer(sessionId);
+            } else {
+              // restart debounce timer
+              if (buf.timer) clearTimeout(buf.timer);
+              buf.timer = setTimeout(() => { flushFallbackBuffer(sessionId); }, FALLBACK_DEBOUNCE_MS) as unknown as NodeJS.Timeout;
+              fallbackBuffers.set(sessionId, buf);
+            }
+          } catch (e) { console.warn('fallback processing scheduling failed', (e as any)?.message || e); }
         } else {
           // No OpenAI available — send the friendly textual fallback immediately (will be spoken by client TTS)
           const fallbackText = `[FALLBACK] ${session.systemPrompt || 'I received your audio. I am currently unable to stream to the upstream model, but I will respond here.'}`;
@@ -329,8 +382,17 @@ router.post('/send', async (req: Request, res: Response) => {
           } catch (e) {
             console.warn(' Gemini Live Proxy: failed to send fallback text', e && (e as any).message ? (e as any).message : e);
           }
-          // Still attempt processing (will no-op if no key)
-          try { processFallbackAudio(session, audioBase64, contentType).catch((err:any) => console.warn('fallback processing failed', err)); } catch (e) { console.warn('fallback processing scheduling failed', (e as any)?.message || e); }
+          // Still attempt processing only if fallback is enabled. When ENABLE_OPENAI_FALLBACK=false
+          // we must NOT call processFallbackAudio even if an OpenAI key exists in settings.
+          if (ENABLE_OPENAI_FALLBACK) {
+            try { processFallbackAudio(session, audioBase64, contentType).catch((err:any) => console.warn('fallback processing failed', err)); } catch (e) { console.warn('fallback processing scheduling failed', (e as any)?.message || e); }
+          } else {
+            // Fallback disabled: do not invoke OpenAI processing.
+              console.log(' Gemini Live Proxy: OpenAI fallback disabled — skipping processFallbackAudio call');
+              try {
+                session.onMessageCallback('[FALLBACK PAUSED] OpenAI fallback is disabled on the server. Responses are temporarily paused.');
+              } catch (e) { /* ignore */ }
+          }
         }
       }
     } catch (e) { console.warn(' Gemini Live Proxy: fallback send check failed', (e as any)?.message || e); }
@@ -400,6 +462,75 @@ router.post('/cleanup', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/gemini/live/quick-test
+ * Quick integration test: create a short-lived session, send a text, wait for a response, return messages.
+ * Body: { model?, ttsModel?, text? }
+ */
+router.post('/quick-test', async (req: Request, res: Response) => {
+  const { model, ttsModel, text, keepAlive } = req.body || {};
+  const testText = text || 'Hello — please introduce yourself briefly.';
+  const QUICK_TEST_TIMEOUT_MS = Number(process.env.QUICK_TEST_TIMEOUT_MS) || 20000; // default 20s
+  try {
+    const result = await sessionManager.createSession({ model, ttsModel });
+    const sessionId = result.sessionId;
+    const session = sessionManager.getSession(sessionId);
+
+    if (!session) {
+      return res.status(500).json({ error: 'Failed to create session' });
+    }
+
+    const messages: any[] = [];
+
+    // Install a temporary onMessageCallback to capture responses
+    const onMsg = (textOrBinary: any, audio?: any, mime?: any) => {
+      try {
+        messages.push({ text: typeof textOrBinary === 'string' ? textOrBinary : String(textOrBinary), audio: audio ? (audio instanceof Uint8Array ? Buffer.from(audio).toString('base64') : audio) : undefined, mime });
+      } catch (e) { messages.push({ error: 'failed to capture message' }); }
+    };
+
+    session.onMessageCallback = onMsg;
+
+    // send test text (non-blocking)
+    try { await sessionManager.sendText(sessionId, testText); } catch (e) { /* ignore send errors */ }
+
+    // wait for first message or timeout
+    const waited = await new Promise<{ timedOut: boolean }>((resolve) => {
+      const timeout = setTimeout(() => resolve({ timedOut: true }), QUICK_TEST_TIMEOUT_MS);
+      const check = setInterval(() => {
+        if (messages.length > 0) {
+          clearTimeout(timeout);
+          clearInterval(check);
+          resolve({ timedOut: false });
+        }
+      }, 200);
+    });
+
+    const responsePayload: any = { sessionId, messages, timedOut: waited.timedOut };
+
+    // If caller requested to keep the session alive, return backend WS URL and skip cleanup
+    if (keepAlive) {
+      try {
+        const backendBase = process.env.BACKEND_WS_URL || process.env.API_URL || `http://localhost:3001`;
+        const wsUrl = (backendBase.startsWith('http') ? backendBase.replace(/^http/, 'ws') : backendBase).replace(/\/$/, '') + `/?sessionId=${sessionId}`;
+        responsePayload.wsUrl = wsUrl;
+        responsePayload.model = result.model;
+        responsePayload.ttsModel = result.ttsModel;
+        // leave session running for manual frontend connection
+      } catch (e) {
+        console.warn('quick-test: failed to build wsUrl', (e as any)?.message || e);
+      }
+    } else {
+      try { sessionManager.cleanupSession(sessionId); } catch (e) { /* ignore cleanup errors */ }
+    }
+
+    return res.json(responsePayload);
+  } catch (err: any) {
+    console.error(' Gemini Live Proxy: quick-test failed', err && err.message ? err.message : err);
+    return res.status(500).json({ error: 'quick-test failed', details: err && err.message ? err.message : String(err) });
+  }
+});
+
+/**
  * GET /api/gemini/live/status
  * Get status of all active sessions
  */
@@ -438,7 +569,7 @@ router.get('/session-debug', (req: Request, res: Response) => {
       lastError: s.lastError || null,
       retryCount: s.retryCount || 0,
       pendingMsgsCount: (s.pendingMsgs && s.pendingMsgs.length) || 0,
-      pendingMsgPreview: (s.pendingMsgs || []).slice(0,5).map(p => ({ type: p.type, preview: p.type === 'text' ? String(p.payload).slice(0,120) : `${Math.round((p.payload?.data?.length||0)/1024)}KB` }))
+      pendingMsgPreview: (s.pendingMsgs || []).slice(0,5).map((p: any) => ({ type: p.type, preview: p.type === 'text' ? String(p.payload).slice(0,120) : `${Math.round((p.payload?.data?.length||0)/1024)}KB` }))
     };
 
     return res.json({ success: true, session: safe });

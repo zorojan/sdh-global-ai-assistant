@@ -68,6 +68,20 @@ export function useLiveApiWidget({
           .catch(err => {
             console.error('❌ Widget: Error adding worklet:', err);
           });
+        // Add a one-time click handler so a user gesture can resume the AudioContext
+        const resumeHandler = async () => {
+          try {
+            if (audioStreamerRef.current) {
+              await audioStreamerRef.current.resume();
+              console.debug('🎧 Widget: AudioStreamer resumed via user gesture');
+            }
+          } catch (e) {
+            console.warn('Widget: resume handler error', e);
+          } finally {
+            window.removeEventListener('click', resumeHandler);
+          }
+        };
+        window.addEventListener('click', resumeHandler);
       });
     }
   }, [audioStreamerRef]);
@@ -109,6 +123,9 @@ export function useLiveApiWidget({
     const onAudio = (payload: ArrayBuffer | { data: ArrayBuffer; mimeType?: string }) => {
       if (!audioStreamerRef.current) return;
 
+      // debug log audio arrival at hook level
+      try { console.debug('Widget: onAudio called, payload type=', typeof payload); } catch (e) {}
+
       // Handle two shapes: raw ArrayBuffer (assumed PCM16) or object with mimeType
       if (payload instanceof ArrayBuffer) {
         audioStreamerRef.current.addPCM16(new Uint8Array(payload));
@@ -131,6 +148,8 @@ export function useLiveApiWidget({
           }
         } catch (e) {}
         audioStreamerRef.current.addPCM16(new Uint8Array(data));
+        // try to ensure context is resumed (may require user gesture)
+        try { audioStreamerRef.current.resume().catch(()=>{}); } catch (e) {}
         return;
       }
 

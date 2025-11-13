@@ -12,7 +12,8 @@ import realtimeRoutes from './routes/realtime';
 import validationRoutes from './routes/validation';
 import geminiAudioRoutes from './routes/gemini-audio';
 import geminiLiveProxyRoutes from './routes/gemini-live-proxy';
-import * as sessionManager from './services/geminiLive/sessionManagerClean';
+// Use require here and type as any to avoid TypeScript export shape mismatches at compile time
+const sessionManager: any = require('./services/geminiLive/sessionManagerClean');
 import path from 'path';
 import configRoutes from './routes/config';
 const ragRoutes = require('./routes/rag');
@@ -126,11 +127,12 @@ wss.on('connection', (ws: WebSocket, req) => {
 
   const session = sessionManager.getSession(sessionId);
   if (session) {
-    session.onMessageCallback = (text: string, audio?: Uint8Array) => {
+    session.onMessageCallback = (text: string, audio?: Uint8Array, mimeType?: string) => {
       ws.send(JSON.stringify({
         type: 'message',
         text,
-        audio: audio ? Array.from(audio) : null
+        audio: audio ? Array.from(audio) : null,
+        audioMimeType: mimeType || null
       }));
     };
   } else {

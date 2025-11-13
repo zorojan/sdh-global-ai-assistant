@@ -4,6 +4,7 @@ import { AudioRecorder } from '../lib/audio-recorder';
 import { LiveAPIProviderWidget } from '../contexts/LiveAPIContextWidget';
 import { useLiveAPIContextWidget } from '../contexts/LiveAPIContextWidget';
 import BasicFaceWidget from './demo/basic-face/BasicFaceWidget';
+import AudioEnableButton from './AudioEnableButton';
 
 // Language instructions for different locales
 function getLanguageInstructions(language?: string): string {
@@ -163,6 +164,9 @@ const VoiceChatWidgetInner: React.FC<{ agent: any }> = ({ agent }) => {
       </div>
       
       <div className="voice-controls">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <AudioEnableButton />
+        </div>
         <button
           className={`voice-button ${isListening ? 'listening' : ''} ${isConnecting ? 'connecting' : ''}`}
           onClick={handleVoiceToggle}

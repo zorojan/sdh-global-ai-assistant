@@ -24,7 +24,7 @@ import {
 } from './audioworklet-registry';
 
 export class AudioStreamer {
-  private sampleRate: number = 24000;
+  private sampleRate: number;
   private bufferSize: number = 7680;
   // A queue of audio buffers to be played. Each buffer is a Float32Array.
   private audioQueue: Float32Array[] = [];
@@ -42,10 +42,17 @@ export class AudioStreamer {
   public onComplete = () => {};
 
   constructor(public context: AudioContext) {
+    // Initialize sampleRate from the AudioContext to match device output rate
+    this.sampleRate = Math.round(this.context.sampleRate || 24000);
     this.gainNode = this.context.createGain();
     this.source = this.context.createBufferSource();
     this.gainNode.connect(this.context.destination);
     this.addPCM16 = this.addPCM16.bind(this);
+  }
+
+  // Allow runtime update of the expected sample rate for incoming PCM16 streams.
+  public setSampleRate(rate: number) {
+    if (rate && Number.isFinite(rate) && rate > 0) this.sampleRate = Math.round(rate);
   }
 
   async addWorklet<T extends (d: any) => void>(

@@ -4,7 +4,7 @@
   "description": "Backend API for SDH Global AI Assistant",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "node ./scripts/ensure-port-free.js 3001 && nodemon src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest"

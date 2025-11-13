@@ -380,27 +380,22 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
                 <div className="loading-spinner"></div>
                 <p>Loading voice configuration...</p>
               </div>
-            ) : apiKey ? (
-              <EnhancedVoiceChatWidget 
-                agent={agent} 
-                geminiApiKey={apiKey} 
-                apiUrl={apiUrl} 
-                initialProvider={(aiProvider === 'openai') ? 'openai' : 'gemini'} 
-                allowProviderSelection={aiProvider === 'hybrid'}
-                showAnimatedFace={true}
-              />
             ) : (
-              <div className="voice-error">
-                <p>⚠️ Voice mode requires API key configuration</p>
-                <p>Configure API key in admin panel: <a href="http://localhost:3000" target="_blank">Open Admin</a></p>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                  <button onClick={() => setShowIntroduction(true)}>
-                    Switch to text mode
-                  </button>
-                  <button onClick={() => loadApiKey()}>
-                    Retry API key
-                  </button>
-                </div>
+              <div>
+                {/* If no public key is available we still allow voice via backend-proxy */}
+                {!apiKey && (
+                  <div style={{ background: '#fff8e1', padding: '8px', margin: '8px 0', borderRadius: 6 }}>
+                    <strong>Note:</strong> Public API key not available — using backend proxy (no key exposed to browser).
+                  </div>
+                )}
+                <EnhancedVoiceChatWidget 
+                  agent={agent} 
+                  geminiApiKey={apiKey} 
+                  apiUrl={apiUrl} 
+                  initialProvider={(aiProvider === 'openai') ? 'openai' : 'gemini'} 
+                  allowProviderSelection={aiProvider === 'hybrid'}
+                  showAnimatedFace={true}
+                />
               </div>
             )
           )}
