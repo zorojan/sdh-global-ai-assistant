@@ -10,7 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
+  "@google/genai": "1.29.0",
     "@supabase/supabase-js": "^2.79.0",
     "@types/ws": "^8.18.1",
     "axios": "^1.13.2",

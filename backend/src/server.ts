@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import WebSocket from 'ws';
 import { supabase, initSupabaseDatabase } from './database/supabase';
 import settingsRoutes from './routes/settings';
@@ -10,13 +11,35 @@ import authRoutes from './routes/auth';
 import realtimeRoutes from './routes/realtime';
 import validationRoutes from './routes/validation';
 import geminiAudioRoutes from './routes/gemini-audio';
-import geminiLiveProxyRoutes, { activeSessions } from './routes/gemini-live-proxy';
+import geminiLiveProxyRoutes from './routes/gemini-live-proxy';
+import * as sessionManager from './services/geminiLive/sessionManagerClean';
+import path from 'path';
 import configRoutes from './routes/config';
 const ragRoutes = require('./routes/rag');
 const { router: voiceRagRoutes, voiceRAGServer } = require('./routes/voice-rag');
 const knowledgeRoutes = require('./routes/knowledge');
 
 dotenv.config();
+
+// ---- Dev convenience: auto-enable GenAI SDK if a known service account JSON exists ----
+// This helps local testing so you don't need to set env vars manually.
+try {
+  const devKeyPath = 'C:\\sdh\\sdh-seo-8afdb0b02a38.json';
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(devKeyPath)) {
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = devKeyPath;
+    process.env.USE_GENAI_SDK = process.env.USE_GENAI_SDK || 'true';
+    try {
+      const cred = JSON.parse(fs.readFileSync(devKeyPath, 'utf8'));
+      if (cred && cred.project_id) process.env.GCP_PROJECT = process.env.GCP_PROJECT || cred.project_id;
+    } catch (e) {
+      console.warn('Could not parse local service account JSON:', (e as any)?.message || String(e));
+    }
+    process.env.GCP_LOCATION = process.env.GCP_LOCATION || 'us-central1';
+    console.log('Auto-enabled GenAI SDK using local service account at', devKeyPath, 'GCP_PROJECT=', process.env.GCP_PROJECT);
+  }
+} catch (e) {
+  /* ignore */
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -101,7 +124,7 @@ wss.on('connection', (ws: WebSocket, req) => {
   // Original Gemini Live WebSocket connections
   console.log('🎙️ Gemini Live WebSocket client connected for session:', sessionId);
 
-  const session = activeSessions.get(sessionId);
+  const session = sessionManager.getSession(sessionId);
   if (session) {
     session.onMessageCallback = (text: string, audio?: Uint8Array) => {
       ws.send(JSON.stringify({
@@ -144,8 +167,9 @@ app.use(cors({
 app.use('/api/realtime', realtimeRoutes);
 
 // JSON middleware after realtime routes
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase body size limit to allow base64-encoded audio payloads from the auditester
+app.use(express.json({ limit: '4mb' }));
+app.use(express.urlencoded({ extended: true, limit: '4mb' }));
 
 // Other routes
 app.use('/api/auth', authRoutes);
@@ -336,6 +360,20 @@ app.get('/api/public/config/live-connection/:agentId', async (req, res) => {
     res.status(500).json({ error: 'Failed to build Live API configuration' });
   }
 });
+
+// Serve a tiny auditester page for local testing (no keys exposed)
+app.get('/auditester', (req, res) => {
+  try {
+    const p = path.join(__dirname, 'public', 'auditester.html');
+    res.sendFile(p);
+  } catch (err) {
+    console.error('Failed to serve auditester:', err);
+    res.status(500).send('Failed to serve auditester');
+  }
+});
+
+// Also serve static public files from the compiled/public or src/public folder
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Health check
 app.get('/api/health', (req, res) => {

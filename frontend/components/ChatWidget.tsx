@@ -27,11 +27,24 @@ type DialogMode = 'text' | 'voice' | null;
 async function fetchApiKey(apiUrl: string) {
   try {
     const response = await fetch(`${apiUrl}/api/public/apikey`);
+    // If backend intentionally forbids public key access, return empty string silently
+    if (response.status === 403) {
+      // Log intentionally only once per page session (see component-level retry behavior)
+      if (!fetchApiKey['_logged403']) {
+        console.info('Widget.fetchApiKey: public apikey access disabled by backend (403)');
+        fetchApiKey['_logged403'] = true;
+      }
+      return '';
+    }
     if (!response.ok) throw new Error('Failed to fetch API key');
     const data = await response.json();
     return data.apiKey || '';
   } catch (error) {
-    console.error('Error fetching API key from backend:', error);
+    // Keep debug-level logging but avoid spamming the console if the error repeats
+    if (!fetchApiKey['_loggedError']) {
+      console.debug('Widget.fetchApiKey: error fetching API key (falling back to empty):', error);
+      fetchApiKey['_loggedError'] = true;
+    }
     return '';
   }
 }
@@ -60,27 +73,40 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Загружаем API ключ точно как во frontend
-  useEffect(() => {
-    const loadApiKey = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const key = await fetchApiKey(apiUrl);
-        
-        if (!key) {
-          setError('API ключ не настроен в админ панели');
-        } else {
-          setApiKey(key);
-          console.log('🎤 Widget: API key loaded successfully');
+  const loadApiKey = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const key = await fetchApiKey(apiUrl);
+      // Treat missing public key as non-fatal; backend may block exposing it.
+      // Only log a single informational warning to avoid spamming developer console.
+      setApiKey(key);
+      if (!key) {
+        // Use console.info (not warn) because this is an expected configuration in proxy mode
+        if (!loadApiKey['_warned']) {
+          console.info('🎤 Widget: Public API key not available — using backend-proxy flow');
+          loadApiKey['_warned'] = true;
         }
-      } catch (err) {
-        console.error('🎤 Widget: Failed to load API key:', err);
-        setError('Не удалось загрузить настройки');
-      } finally {
-        setLoading(false);
+      } else {
+        if (!loadApiKey['_success']) {
+          console.log('🎤 Widget: API key loaded successfully');
+          loadApiKey['_success'] = true;
+        }
       }
-    };
+    } catch (err) {
+      // Keep one-time error log
+      if (!loadApiKey['_errorLogged']) {
+        console.error('🎤 Widget: Failed to load API key:', err);
+        loadApiKey['_errorLogged'] = true;
+      }
+      // Do not block the widget on API key fetch failure; continue with defaults.
+      setError('Не удалось загрузить настройки');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadApiKey();
   }, [apiUrl]);
 
@@ -159,30 +185,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
     );
   }
 
-  // Show error if API key couldn't be loaded
-  if (error) {
-    return (
-      <div className={`chat-widget ${theme} ${position}`}>
-        <button className="chat-toggle" disabled>
-          ⚠️
-        </button>
-        <div className="chat-window open">
-          <div className="chat-header">
-            <h3>Configuration Error</h3>
-          </div>
-          <div className="chat-messages">
-            <div className="voice-error">
-              <p>⚠️ {error}</p>
-              <p>Configure API key in admin panel:</p>
-              <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer">
-                Open Admin Panel
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Do not block the widget if API key is missing; show a small warning in UI instead.
 
   const startDialog = (mode: DialogMode) => {
     setDialogMode(mode);
@@ -281,6 +284,17 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
             ✕
           </button>
         </div>
+        {/* Non-blocking warning when public API key is not present */}
+        {!apiKey && (
+          <div className="chat-warning" style={{ background: '#fff3', color: '#000', padding: '6px 10px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>Публичный API-ключ не доступен — используется backend-proxy (без раскрытия ключа).</div>
+              <div style={{ marginLeft: '12px' }}>
+                <button onClick={() => loadApiKey()} style={{ padding: '4px 8px', fontSize: '12px' }}>Retry</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Introduction Screen */}
         {showIntroduction && (
@@ -379,9 +393,14 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
               <div className="voice-error">
                 <p>⚠️ Voice mode requires API key configuration</p>
                 <p>Configure API key in admin panel: <a href="http://localhost:3000" target="_blank">Open Admin</a></p>
-                <button onClick={() => setShowIntroduction(true)}>
-                  Switch to text mode
-                </button>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <button onClick={() => setShowIntroduction(true)}>
+                    Switch to text mode
+                  </button>
+                  <button onClick={() => loadApiKey()}>
+                    Retry API key
+                  </button>
+                </div>
               </div>
             )
           )}

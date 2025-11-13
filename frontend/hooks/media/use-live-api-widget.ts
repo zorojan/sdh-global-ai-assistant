@@ -4,6 +4,7 @@
 */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GenAILiveClient } from '../../lib/genai-live-client';
+import GenAILiveProxyClient from '../../lib/genai-live-proxy-client';
 import { LiveConnectConfig } from '@google/genai';
 import { AudioStreamer } from '../../lib/audio-streamer';
 import { audioContext } from '../../lib/utils';
@@ -31,7 +32,14 @@ export function useLiveApiWidget({
   apiKey: string;
   model?: string;
 }): UseLiveApiResults {
-  const client = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey]);
+  const client = useMemo(() => {
+    // If apiKey is empty use backend proxy client which does not expose keys in browser
+    if (!apiKey || apiKey.trim() === '') {
+      // @ts-ignore - proxy client intentionally differs from Google client but implements needed events
+      return new GenAILiveProxyClient(undefined, model);
+    }
+    return new GenAILiveClient(apiKey, model);
+  }, [apiKey, model]);
 
   const audioStreamerRef = useRef<AudioStreamer | null>(null);
 
@@ -146,12 +154,40 @@ export function useLiveApiWidget({
       
       if (success) {
         console.log('✅ Widget: Connection completed successfully');
-        // Add a timeout to check if connection stays open
-        setTimeout(() => {
-          if (!connected) {
-            console.warn('⚠️ Widget: Connection completed but onOpen not fired after 2 seconds');
+        // Wait for the 'open' event with a timeout to avoid false-positive warnings
+        try {
+          const opened = await new Promise<boolean>((resolve) => {
+            let settled = false;
+            const onOpen = () => {
+              if (settled) return;
+              settled = true;
+              try { client.off('open', onOpen); } catch (e) {}
+              resolve(true);
+            };
+
+            // If already connected state is true, resolve immediately
+            if ((connected)) {
+              try { client.off('open', onOpen); } catch (e) {}
+              return resolve(true);
+            }
+
+            client.on('open', onOpen);
+
+            // Timeout after 3500ms
+            setTimeout(() => {
+              if (settled) return;
+              settled = true;
+              try { client.off('open', onOpen); } catch (e) {}
+              resolve(false);
+            }, 3500);
+          });
+
+          if (!opened) {
+            console.warn('⚠️ Widget: Connection completed but onOpen did not fire within timeout');
           }
-        }, 2000);
+        } catch (e) {
+          console.warn('⚠️ Widget: Error waiting for open event', e);
+        }
       } else {
         console.error('❌ Widget: client.connect() returned false');
         throw new Error('Connection failed');

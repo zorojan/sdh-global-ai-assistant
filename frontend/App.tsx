@@ -41,11 +41,16 @@ const API_BASE_URL = 'http://localhost:3001/api';
 async function fetchApiKey() {
   try {
     const response = await fetch(`${API_BASE_URL}/public/apikey`);
+    // If backend intentionally forbids public key access, return empty string silently
+    if (response.status === 403) {
+      console.debug('fetchApiKey: public apikey access disabled by backend (403)');
+      return '';
+    }
     if (!response.ok) throw new Error('Failed to fetch API key');
     const data = await response.json();
     return data.apiKey || '';
   } catch (error) {
-    console.error('Error fetching API key:', error);
+    console.debug('fetchApiKey: error fetching API key (falling back to empty):', error);
     return '';
   }
 }
@@ -91,17 +96,21 @@ function App() {
         setLoading(true);
         setError(null);
         
-        // Load API key and provider settings
+        // Load API key and provider settings. Note: backend may refuse to expose
+        // public API keys (intentional). Treat missing key as non-fatal and
+        // continue using backend-proxied session flow.
         const [key, providerSettings] = await Promise.all([
           fetchApiKey(),
           fetchProviderSettings()
         ]);
-        
+
+        // Do not treat missing key as fatal. Store whatever we get (empty string
+        // means backend intentionally blocked public key exposure).
+        setApiKey(key);
+        setAiProvider(providerSettings.aiProvider);
         if (!key) {
-          setError('API ключ не настроен в админ панели');
+          console.warn('App: Public API key not available — continuing with backend-proxy flow');
         } else {
-          setApiKey(key);
-          setAiProvider(providerSettings.aiProvider);
           console.log('🚀 App: Loaded settings - Provider:', providerSettings.aiProvider);
         }
       } catch (err) {
@@ -139,9 +148,9 @@ function App() {
       }
     };
 
-    if (apiKey) {
-      loadAgentsFromDatabase();
-    }
+    // Always load agents from the backend. Backend will return agents without
+    // needing a public API key when using the server-side proxy/session model.
+    loadAgentsFromDatabase();
   }, [apiKey, setAvailableAgents]);
 
   const handleSendMessage = async (message: string, agentId: string) => {
@@ -162,30 +171,8 @@ function App() {
     );
   }
 
-  // Show error if API key couldn't be loaded
-  if (error || !apiKey) {
-    return (
-      <div className="App">
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-              <h2 className="text-lg font-semibold text-red-800 mb-2">Настройки не найдены</h2>
-              <p className="text-red-600 mb-4">{error || 'API ключ не настроен'}</p>
-              <p className="text-gray-600 mb-4">Настройте Gemini API ключ в админ панели:</p>
-              <a 
-                href="http://localhost:3000" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-              >
-                Открыть админ панель
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // If API key was not returned, show a non-blocking warning but continue.
+  const showApiKeyWarning = !!error || !apiKey;
 
   return (
     <div className="App">
@@ -205,6 +192,11 @@ function App() {
           <div className="fixed top-4 left-4 bg-green-600 text-white p-2 rounded z-50 text-xs">
             Mode: {interactionMode} | 🧠 Gemini Live + RAG
           </div>
+          {showApiKeyWarning && (
+            <div className="fixed top-16 left-4 bg-yellow-500 text-black p-2 rounded z-50 text-xs">
+              Внимание: публичный API-ключ не доступен. Приложение будет работать через backend-proxy.
+            </div>
+          )}
 
           <div className="streaming-console">
             <main>

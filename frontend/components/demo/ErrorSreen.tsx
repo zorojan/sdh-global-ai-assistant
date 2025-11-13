@@ -16,15 +16,25 @@ export default function ErrorScreen() {
   const [error, setError] = useState<{ message?: string } | null>(null);
 
   useEffect(() => {
-    function onError(error: ErrorEvent) {
-      console.error(error);
-      setError(error);
+    if (!client || typeof (client as any).on !== 'function') {
+      // No live client available (likely running in backend-proxy mode without
+      // a direct client in the browser). Do nothing.
+      return;
     }
 
-    client.on('error', onError);
+    function onError(error: any) {
+      console.error('Live client error:', error);
+      setError({ message: error?.message || String(error) });
+    }
+
+    (client as any).on('error', onError);
 
     return () => {
-      client.off('error', onError);
+      try {
+        (client as any).off('error', onError);
+      } catch (e) {
+        // ignore
+      }
     };
   }, [client]);
 

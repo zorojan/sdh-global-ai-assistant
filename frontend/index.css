@@ -642,3 +642,8 @@ form button {
   text-decoration: underline;
   color: var(--accent-green-dark);
 }
+
+
+.keynote-companion {
+  flex-direction: column-reverse;
+}
